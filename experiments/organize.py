@@ -9,6 +9,7 @@ def parse():
     parser.add_argument("--split", dest="split", action="store_true")
     parser.add_argument("--clean", dest="clean", action="store_true")
     parser.add_argument("--split-size", dest="split_size", type=int, default=10)
+    parser.add_argument("--compute-statistics", dest="compute_statistics", action="store_true")
     return parser.parse_args()
 
 
@@ -21,4 +22,7 @@ if __name__ == "__main__":
         split_size=args.split_size,
         clean=args.clean,
     )
-    organizer.create_csvs()
+    if args.compute_statistics:
+        organizer.compute_statistics()
+    else:
+        organizer.create_csvs()

@@ -21,5 +21,5 @@ setup(name='BronchoTrack',
     },
     setup_requires=['pytest-runner', 'flake8'],
     tests_require=['pytest'],
-    # package_data={'DepthResolution': ['data/*.txt']}
+    package_data={'DepthResolution': ['data/*.pkl']}
 )
