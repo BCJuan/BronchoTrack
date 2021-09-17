@@ -109,6 +109,7 @@ class BronchoOrganizer(abc.ABC):
         self.compute_label_statistics()
         self.image_statistis()
 
+    # TODO: compute only in training labels
     def compute_label_statistics(self):
         csvfiles = glob.glob(os.path.join(self.origin_root, "*.csv"))
         scaler = StandardScaler()
@@ -118,6 +119,7 @@ class BronchoOrganizer(abc.ABC):
         parent_dir = pathlib.Path(__file__).parent.absolute()
         dump(scaler, open(os.path.join(parent_dir, "scaler.pkl"), "wb"))
 
+    # TODO: compute only in training images
     def image_statistis(self):
         n_images = 0
         for folder in os.listdir(self.origin_root):

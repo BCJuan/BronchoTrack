@@ -1,6 +1,7 @@
 import pathlib
 import os
 from pickle import load
+import pandas as pd
 import torch
 from torch import nn
 from torch import optim
@@ -11,15 +12,15 @@ from .metrics import EuclideanDistance, NeedleError, DirectionError
 
 class BronchoModel(pl.LightningModule):
 
-    def __init__(self):
+    def __init__(self, pred_folder="./data/cleaned/preds"):
         super().__init__()
         self.model = BronchoNetSingleTemporal()
         self.loss = nn.MSELoss()
         parent_dir = pathlib.Path(__file__).parent.absolute()
         self.scaler = load(open(os.path.join(parent_dir, "data", "scaler.pkl"), "rb"))
-        self.pos_error_train = EuclideanDistance()
-        self.dir_error_train = DirectionError()
-        self.ned_error_train = NeedleError()
+        self.perror, self.derror, self.nerror = EuclideanDistance(), DirectionError(), NeedleError()
+        self.pred_folder = pred_folder
+        os.makedirs(pred_folder, exist_ok=True)
 
     def training_step(self, batch, batch_idx):
         loss, z, py, ry = self._shared_step(batch, batch_idx)
@@ -27,18 +28,34 @@ class BronchoModel(pl.LightningModule):
         return {"loss": loss, "preds": z, "targets": (py, ry)}
 
     def training_step_end(self, outputs):
-        perror, derror = self._compute_errors(outputs)
-        self.log("Position Error", perror, on_step=True, on_epoch=False, logger=True, prog_bar=False)
-        self.log("Direction Error", derror, on_step=True, on_epoch=False, logger=True, prog_bar=False)
+        self._compute_errors(outputs)
+        self.log("Train Position Error", self.perror, on_step=True, on_epoch=False, logger=True, prog_bar=False)
+        self.log("Train Direction Error", self.derror, on_step=True, on_epoch=False, logger=True, prog_bar=False)
+        self.log("Train Needle Error", self.nerror, on_step=True, on_epoch=False, logger=True, prog_bar=False)
 
     def validation_step(self, batch, batch_idx):
         val_loss, z, py, ry = self._shared_step(batch, batch_idx)
         self.log("val_loss", val_loss, on_epoch=True, on_step=False, prog_bar=True, logger=True)
-        return val_loss
+        return {"loss": val_loss, "preds": z, "targets": (py, ry)}
+
+    def validation_epoch_end(self, outputs) -> None:
+        for output in outputs:
+            self._compute_errors(output)
+        self.log("Val Position Error", self.perror, on_step=False, on_epoch=True, logger=True, prog_bar=False)
+        self.log("Val Direction Error", self.derror, on_step=False, on_epoch=True, logger=True, prog_bar=False)
+        self.log("Val Needle Error", self.nerror, on_step=False, on_epoch=True, logger=True, prog_bar=False)
 
     def test_step(self, batch, batch_idx):
         test_loss, z, py, ry = self._shared_step(batch, batch_idx)
-        return test_loss
+        return {"loss": test_loss, "preds": z, "targets": (py, ry)}
+
+    def test_epoch_end(self, outputs) -> None:
+        for output in outputs:
+            self._compute_errors(output)
+            self._save_test_results(output)
+        self.log("Test Position Error", self.perror, on_step=False, on_epoch=True, logger=True, prog_bar=False)
+        self.log("Test Direction Error", self.derror, on_step=False, on_epoch=True, logger=True, prog_bar=False)
+        self.log("Test Needle Error", self.nerror, on_step=False, on_epoch=True, logger=True, prog_bar=False)
 
     def _shared_step(self, batch, batch_idx):
         x, py, ry = batch["images"], batch["pos_labels"], batch["rot_labels"]
@@ -61,10 +78,22 @@ class BronchoModel(pl.LightningModule):
     def _compute_errors(self, outputs):
         targets = self._unscale(torch.cat(outputs["targets"], dim=-1))
         preds = self._unscale(outputs["preds"])
-        perror = torch.mean(torch.tensor([
-            self.pos_error_train(preds[b, t, :3], targets[b, t, :3])
+        _ = torch.mean(torch.tensor([
+            self.perror(preds[b, t, :3], targets[b, t, :3])
             for t in range(targets.shape[1]) for b in range(targets.shape[0])]))
-        derror = torch.mean(torch.tensor([
-            self.dir_error_train(preds[b, t, 3:], targets[b, t, 3:])
+        _ = torch.mean(torch.tensor([
+            self.derror(preds[b, t, 3:], targets[b, t, 3:])
             for t in range(targets.shape[1]) for b in range(targets.shape[0])]))
-        return perror, derror
+        _ = torch.mean(torch.tensor([
+            self.nerror(preds[b, t, :], targets[b, t, :])
+            for t in range(targets.shape[1]) for b in range(targets.shape[0])]))        
+
+    def _save_test_results(self, outputs):
+        targets = self._unscale(torch.cat(outputs["targets"], dim=-1))
+        preds = self._unscale(outputs["preds"])
+        for pred, target in zip(preds, targets):
+            df = pd.DataFrame(columns=["shift_x", "shift_y", "shift_z", "qx", "qy", "qz",
+                                       "gt_shift_x", "gt_shift_y", "gt_shift_z", "gt_qx", "gt_qy", "gt_qz"],
+                              data=torch.cat((pred, target), dim=-1).cpu().numpy())
+            df.to_csv(os.path.join(self.pred_folder, str(len(os.listdir(self.pred_folder))) + ".csv"))
+

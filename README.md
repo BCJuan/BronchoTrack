@@ -14,3 +14,7 @@ Go to `experiments`. To prepare train, val and test splits, place the files (ima
 ## Training
 
 `python train.py --root data/cleaned/ --image-root data/raw_data/`
+
+## Testing
+
+`python train.py --root data/cleaned/ --image-root data/raw_data/ --predict --ckpt <checkpoint-file>`

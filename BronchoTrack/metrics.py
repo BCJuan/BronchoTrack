@@ -33,6 +33,7 @@ class DirectionError(Metric):
     """Direction error metric, works on 1D vectors. MEtric reproduced according to
     https://doi.org/10.1109/TMI.2013.2252361. Section III A
     """
+    # NOTE: is in degrees the result or what? What are our original units?
 
     def __init__(self):
         super().__init__()

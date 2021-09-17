@@ -1,5 +1,3 @@
-from pytorch_lightning.accelerators import accelerator
-from BronchoTrack.models.bronchonet import BronchoNet
 from argparse import ArgumentParser
 from pytorch_lightning.trainer import Trainer
 from pytorch_lightning.callbacks import ModelCheckpoint
@@ -10,7 +8,7 @@ from BronchoTrack.data.datasets import BronchoDataModule
 
 def main(hparams):
     model = BronchoModel()
-    trainer = Trainer(gpus=3, accelerator="ddp", log_every_n_steps=4)
+    trainer = Trainer(gpus=3, log_every_n_steps=4)
     checkpoint_callback = checkpointing()
     trainer.callbacks = [checkpoint_callback]
     logger = TensorBoardLogger("logs", name="BronchoModel")
@@ -19,7 +17,7 @@ def main(hparams):
     drData.setup()
     if hparams.predict:
         model = model.load_from_checkpoint(hparams.ckpt)
-        # model.predict(drData.test_dataloader())
+        trainer.test(model, drData)
     else:
         trainer.fit(model, drData)
 
