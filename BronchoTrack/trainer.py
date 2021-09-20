@@ -6,7 +6,7 @@ import torch
 from torch import nn
 from torch import optim
 import pytorch_lightning as pl
-from .models.bronchonet import BronchoNetSingleTemporal
+from .models import bronchonet
 from .metrics import EuclideanDistance, NeedleError, DirectionError
 
 
@@ -14,7 +14,7 @@ class BronchoModel(pl.LightningModule):
 
     def __init__(self, pred_folder="./data/cleaned/preds"):
         super().__init__()
-        self.model = BronchoNetSingleTemporal()
+        self.model = bronchonet.BronchoNetSingleTemporal()
         self.loss = nn.MSELoss()
         parent_dir = pathlib.Path(__file__).parent.absolute()
         self.scaler = load(open(os.path.join(parent_dir, "data", "scaler.pkl"), "rb"))
@@ -25,7 +25,7 @@ class BronchoModel(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         loss, z, py, ry = self._shared_step(batch, batch_idx)
         self.log("train_loss", loss, on_step=True, on_epoch=False, logger=True, prog_bar=False)
-        return {"loss": loss, "preds": z, "targets": (py, ry)}
+        return {"loss": loss, "preds": z.detach(), "targets": (py, ry)}
 
     def training_step_end(self, outputs):
         self._compute_errors(outputs)
@@ -39,6 +39,7 @@ class BronchoModel(pl.LightningModule):
         return {"loss": val_loss, "preds": z, "targets": (py, ry)}
 
     def validation_epoch_end(self, outputs) -> None:
+        self.perror.reset(), self.derror.reset(), self.nerror.reset()
         for output in outputs:
             self._compute_errors(output)
         self.log("Val Position Error", self.perror, on_step=False, on_epoch=True, logger=True, prog_bar=False)
@@ -50,6 +51,7 @@ class BronchoModel(pl.LightningModule):
         return {"loss": test_loss, "preds": z, "targets": (py, ry)}
 
     def test_epoch_end(self, outputs) -> None:
+        self.perror.reset(), self.derror.reset(), self.nerror.reset()
         for output in outputs:
             self._compute_errors(output)
             self._save_test_results(output)
@@ -78,15 +80,12 @@ class BronchoModel(pl.LightningModule):
     def _compute_errors(self, outputs):
         targets = self._unscale(torch.cat(outputs["targets"], dim=-1))
         preds = self._unscale(outputs["preds"])
-        _ = torch.mean(torch.tensor([
-            self.perror(preds[b, t, :3], targets[b, t, :3])
-            for t in range(targets.shape[1]) for b in range(targets.shape[0])]))
-        _ = torch.mean(torch.tensor([
-            self.derror(preds[b, t, 3:], targets[b, t, 3:])
-            for t in range(targets.shape[1]) for b in range(targets.shape[0])]))
-        _ = torch.mean(torch.tensor([
-            self.nerror(preds[b, t, :], targets[b, t, :])
-            for t in range(targets.shape[1]) for b in range(targets.shape[0])]))        
+        _ = [self.perror(preds[b, t, :3], targets[b, t, :3])
+             for t in range(targets.shape[1]) for b in range(targets.shape[0])]
+        _ = [self.derror(preds[b, t, 3:], targets[b, t, 3:])
+             for t in range(targets.shape[1]) for b in range(targets.shape[0])]
+        _ = [self.nerror(preds[b, t, :], targets[b, t, :])
+             for t in range(targets.shape[1]) for b in range(targets.shape[0])]        
 
     def _save_test_results(self, outputs):
         targets = self._unscale(torch.cat(outputs["targets"], dim=-1))
@@ -96,4 +95,3 @@ class BronchoModel(pl.LightningModule):
                                        "gt_shift_x", "gt_shift_y", "gt_shift_z", "gt_qx", "gt_qy", "gt_qz"],
                               data=torch.cat((pred, target), dim=-1).cpu().numpy())
             df.to_csv(os.path.join(self.pred_folder, str(len(os.listdir(self.pred_folder))) + ".csv"))
-

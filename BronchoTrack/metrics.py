@@ -22,11 +22,15 @@ class EuclideanDistance(Metric):
         self.add_state("count", torch.tensor(0), dist_reduce_fx="sum")
 
     def update(self, preds, targets):
-        self.squared_sum += torch.sqrt(torch.sum((preds - targets)**2))
+        self.squared_sum += self.euclidean(preds, targets)
         self.count += 1
 
     def compute(self):
         return self.squared_sum/self.count
+
+    @staticmethod
+    def euclidean(preds, targets):
+        return torch.sqrt(torch.sum((preds - targets)**2))
 
 
 class DirectionError(Metric):
@@ -42,12 +46,16 @@ class DirectionError(Metric):
         self.add_state("count", torch.tensor(0), dist_reduce_fx="sum")
 
     def update(self, preds, targets):
-        self.squared_sum += torch.nan_to_num(torch.acos(
-            torch.dot(preds, targets)))
+        self.squared_sum += self.inverse_cos(preds, targets)
         self.count += 1
 
     def compute(self):
         return self.squared_sum/self.count
+
+    @staticmethod
+    def inverse_cos(preds, targets):
+        return torch.nan_to_num(torch.acos(
+            torch.dot(preds, targets)))
 
 
 class NeedleError(Metric):
@@ -65,10 +73,14 @@ class NeedleError(Metric):
         self.distance = distance
 
     def update(self, preds, targets):
-        self.squared_sum += torch.sqrt(torch.sum((
-            preds[:3] + self.distance*preds[3:] -
-            (targets[:3] + self.distance*targets[3:]))**2))
+        self.squared_sum += self.needle(preds, targets, self.distance)
         self.count += 1
 
     def compute(self):
         return self.squared_sum/self.count
+
+    @staticmethod
+    def needle(preds, targets, distance=3):
+        return torch.sqrt(torch.sum((
+            preds[:3] + distance*preds[3:] -
+            (targets[:3] + distance*targets[3:]))**2))
