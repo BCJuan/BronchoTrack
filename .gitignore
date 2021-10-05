@@ -133,4 +133,5 @@ experiments/data/
 settings.json
 experiments/checkpoints/
 experiments/logs/
+experiments/images_paper/*.pdf
 preguntes.md
