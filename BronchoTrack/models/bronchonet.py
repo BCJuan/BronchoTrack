@@ -122,7 +122,7 @@ class BronchoNetDoubleTemporalLateFusion(nn.Module):
         # out == [b, t, 32]
         output = self.linear(output)
         # we do not include (N, t,Hout​)=0
-        return output[:, 1:, :]
+        return output
 
     def _build_backbone(self, net: nn.Module, depth: int) -> nn.Module:
         new_backbone = nn.Sequential()
@@ -178,7 +178,7 @@ class BronchoNetDoubleLateFusion(nn.Module):
 
         feature_outputs = torch.stack(feature_outputs).permute(1, 0, 2)
         # [b, t, 6]
-        return output[:, 1:, :]
+        return feature_outputs
 
     def _build_backbone(self, net: nn.Module, depth: int) -> nn.Module:
         new_backbone = nn.Sequential()

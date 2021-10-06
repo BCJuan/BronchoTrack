@@ -23,4 +23,4 @@ class OffsetNet(nn.Module):
             output = torch.cat([ot, ot1], dim=1)
             feature_outputs.append(self.classifier(output))   
         feature_outputs = torch.stack(feature_outputs).permute(1, 0, 2)
-        return output[:, 1:, :]
+        return feature_outputs

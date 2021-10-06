@@ -55,7 +55,7 @@ class DirectionError(Metric):
     @staticmethod
     def inverse_cos(preds, targets):
         return torch.acos(
-            torch.dot(preds, targets))
+            torch.clamp(torch.dot(preds, targets), -1, 1))
 
 
 class NeedleError(Metric):

@@ -1,20 +1,21 @@
 from argparse import ArgumentParser
-from pytorch_lightning.accelerators import accelerator
 from pytorch_lightning.trainer import Trainer
-from pytorch_lightning.callbacks import ModelCheckpoint
+from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
 from pytorch_lightning.loggers import TensorBoardLogger
 from BronchoTrack.trainer import BronchoModel
 from BronchoTrack.data.datasets import BronchoDataModule
 
 
 def main(hparams):
-    model = BronchoModel()
-    trainer = Trainer(gpus=3, log_every_n_steps=4)
+    model = BronchoModel(pred_folder=hparams.pred_folder, lr=hparams.lr,
+                         model=hparams.model)
+    trainer = Trainer.from_argparse_args(hparams, accumulate_grad_batches=16, precision=16)
     checkpoint_callback = checkpointing(hparams.ckpt_name)
-    trainer.callbacks = [checkpoint_callback]
+    trainer.callbacks = [checkpoint_callback,
+                         LearningRateMonitor(logging_interval='epoch')]
     logger = TensorBoardLogger("logs", name="BronchoModel", version=args.ckpt_name)
     trainer.logger = logger
-    drData = BronchoDataModule(hparams.root, hparams.image_root, 4)
+    drData = BronchoDataModule(hparams.root, hparams.image_root, hparams.batch_size)
     drData.setup()
     if hparams.predict:
         model = model.load_from_checkpoint(hparams.ckpt)
@@ -41,13 +42,13 @@ def parse():
     parser.add_argument("--predict", dest="predict", action="store_true")
     parser.add_argument("--ckpt", dest="ckpt", type=str)
     parser.add_argument("--ckpt-name", dest="ckpt_name", type=str, default="bronchonet")
-    # TODO: batch_size, witdth, height, chcek how to build args in lightninh
+    parser.add_argument("--batch-size", dest="batch_size", type=int,  default=16)
     return parser
 
 
 if __name__ == "__main__":
-
-    # seed_everything(42, workers=True)
     parser = parse()
+    parser = BronchoModel.add_model_specific_args(parser)
+    parser = Trainer.add_argparse_args(parser)
     args = parser.parse_args()
     main(args)
