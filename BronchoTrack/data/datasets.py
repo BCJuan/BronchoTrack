@@ -8,20 +8,19 @@ from typing import Optional
 from torch.utils import data
 from torchvision import transforms
 from PIL import Image
-from torchvision.transforms.transforms import ToTensor
 from pickle import load
 import pytorch_lightning as pl
+from torchvision.transforms.transforms import ColorJitter
 
 
 class BronchoDataset(data.Dataset):
     def __init__(
-        self, root_folder, image_root, train=True, augment=True, target_size=(256, 256)
+        self, root_folder, image_root, train=True, target_size=(256, 256)
     ):
         super().__init__()
         self.root_folder = root_folder
         self.image_root = image_root
         self.train = train
-        self.augment = augment
         self.target_size = target_size
 
         self.items = glob.glob(os.path.join(self.root_folder, "*.csv"))
@@ -46,7 +45,11 @@ class BronchoDataset(data.Dataset):
             os.path.join(self.image_root, row["patient"], row["filename"])
             for _, row in dataframe.iterrows()
         ]
-        images = torch.stack([self.test_image_transforms()(Image.open(i)) for i in images_paths])
+        if self.train:
+            t = self.train_image_transforms()
+        else:
+            t = self.test_image_transforms()
+        images = torch.stack([t(Image.open(i)) for i in images_paths])
         return {
             "images": images,
             "pos_labels": torch.tensor(position_labels, dtype=torch.float32),
@@ -63,14 +66,40 @@ class BronchoDataset(data.Dataset):
         )
 
     def train_image_transforms(self):
-        # ColorJitter
-        # RandomAffine?? without rotations
-        # GaussianBlur
-        # RandomAdjustSharpness
-        # RandomAutocontrast
-        # RandomEqualize
-        # merge them with RandomApply
-        pass
+        return transforms.Compose(
+            [
+                TrainTransform(),
+                transforms.ToTensor(),
+                transforms.Resize(self.target_size),
+                transforms.Normalize(self.image_mean, self.image_std),
+            ]
+        )
+
+
+class TrainTransform(object):
+
+    def __init__(self):
+        self.cjitter = transforms.ColorJitter(brightness=.4, hue=.2, saturation=0.3, contrast=0.3)
+        self.gblur = transforms.GaussianBlur(kernel_size=(3, 3), sigma=(0.2, 6))
+        self.posterizer = transforms.RandomPosterize(bits=6, p=0.4)
+        self.solarizer = transforms.RandomSolarize(threshold=250, p=0.2)
+        self.sharpness_adjuster = transforms.RandomAdjustSharpness(sharpness_factor=7, p=0.4)
+        self.autocontraster = transforms.RandomAutocontrast(p=0.5)
+        self.equalizer = transforms.RandomEqualize(p=0.5)
+
+    def __call__(self, image):
+        r = np.random.rand(1)
+        if r > 0.5:
+            image = self.cjitter(image)
+        r = np.random.rand(1)
+        if r > 0.5:
+            image = self.gblur(image)
+        image = self.posterizer(image)
+        image = self.solarizer(image)
+        image = self.sharpness_adjuster(image)
+        image = self.autocontraster(image)
+        image = self.equalizer(image)
+        return image
 
 
 class BronchoDataModule(pl.LightningDataModule):

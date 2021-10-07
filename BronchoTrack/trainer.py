@@ -29,6 +29,8 @@ class BronchoModel(pl.LightningModule):
         self.loss = nn.MSELoss()
         parent_dir = pathlib.Path(__file__).parent.absolute()
         self.scaler = load(open(os.path.join(parent_dir, "data", "scaler.pkl"), "rb"))
+        self.register_buffer("scaler_mean", torch.tensor(self.scaler.mean_, dtype=torch.float32))
+        self.register_buffer("scaler_scale", torch.tensor(self.scaler.scale_, dtype=torch.float32))
         self.perror, self.derror, self.nerror = EuclideanDistance(), DirectionError(), NeedleError()
         self.pred_folder = pred_folder
         os.makedirs(pred_folder, exist_ok=True)
@@ -45,28 +47,28 @@ class BronchoModel(pl.LightningModule):
 
     def training_step(self, batch, batch_idx):
         loss, z, py, ry = self._shared_step(batch, batch_idx)
-        self.log("train_loss", loss.item(), on_step=False, on_epoch=True, logger=True, prog_bar=False)
+        self.log("train_loss", loss.detach(), on_step=False, on_epoch=True, logger=True, prog_bar=False, sync_dist=True)
         return {"loss": loss, "preds": z.detach(), "targets": torch.cat([py, ry], dim=-1)}
 
     def training_epoch_end(self, outputs):
         for output in outputs:
             self._compute_errors(output)
-        self.log("Train Position Error", self.perror, on_step=False, on_epoch=True, logger=True, prog_bar=False)
-        self.log("Train Direction Error", self.derror, on_step=False, on_epoch=True, logger=True, prog_bar=False)
-        self.log("Train Needle Error", self.nerror, on_step=False, on_epoch=True, logger=True, prog_bar=False)
+        self.log("Train Position Error", self.perror, on_step=False, on_epoch=True, logger=True, prog_bar=False, sync_dist=True)
+        self.log("Train Direction Error", self.derror, on_step=False, on_epoch=True, logger=True, prog_bar=False, sync_dist=True)
+        self.log("Train Needle Error", self.nerror, on_step=False, on_epoch=True, logger=True, prog_bar=False, sync_dist=True)
 
     def validation_step(self, batch, batch_idx):
         val_loss, z, py, ry = self._shared_step(batch, batch_idx)
-        self.log("val_loss", val_loss.item(), on_epoch=True, on_step=False, prog_bar=True, logger=True)
+        self.log("val_loss", val_loss.detach(), on_epoch=True, on_step=False, prog_bar=True, logger=True, sync_dist=True)
         return {"loss": val_loss, "preds": z, "targets": torch.cat([py, ry], dim=-1)}
 
     def validation_epoch_end(self, outputs) -> None:
         self.perror.reset(), self.derror.reset(), self.nerror.reset()
         for output in outputs:
             self._compute_errors(output)
-        self.log("Val Position Error", self.perror, on_step=False, on_epoch=True, logger=True, prog_bar=False)
-        self.log("Val Direction Error", self.derror, on_step=False, on_epoch=True, logger=True, prog_bar=False)
-        self.log("Val Needle Error", self.nerror, on_step=False, on_epoch=True, logger=True, prog_bar=False)
+        self.log("Val Position Error", self.perror, on_step=False, on_epoch=True, logger=True, prog_bar=False, sync_dist=True)
+        self.log("Val Direction Error", self.derror, on_step=False, on_epoch=True, logger=True, prog_bar=False, sync_dist=True)
+        self.log("Val Needle Error", self.nerror, on_step=False, on_epoch=True, logger=True, prog_bar=False, sync_dist=True)
 
     def test_step(self, batch, batch_idx):
         test_loss, z, py, ry = self._shared_step(batch, batch_idx)
@@ -77,9 +79,9 @@ class BronchoModel(pl.LightningModule):
         for output in outputs:
             self._compute_errors(output)
             self._save_test_results(output)
-        self.log("Test Position Error", self.perror, on_step=False, on_epoch=True, logger=True, prog_bar=False)
-        self.log("Test Direction Error", self.derror, on_step=False, on_epoch=True, logger=True, prog_bar=False)
-        self.log("Test Needle Error", self.nerror, on_step=False, on_epoch=True, logger=True, prog_bar=False)
+        self.log("Test Position Error", self.perror, on_step=False, on_epoch=True, logger=True, prog_bar=False, sync_dist=True)
+        self.log("Test Direction Error", self.derror, on_step=False, on_epoch=True, logger=True, prog_bar=False, sync_dist=True)
+        self.log("Test Needle Error", self.nerror, on_step=False, on_epoch=True, logger=True, prog_bar=False, sync_dist=True)
 
     def _shared_step(self, batch, batch_idx):
         x, py, ry = batch["images"], batch["pos_labels"], batch["rot_labels"]
@@ -99,11 +101,7 @@ class BronchoModel(pl.LightningModule):
         return {'optimizer': optimizer, 'lr_scheduler': scheduler_dict}
 
     def _unscale(self, targets):
-        device = targets.get_device()
-        mean = torch.tensor(self.scaler.mean_, dtype=torch.float32).to(device)
-        std = torch.tensor(self.scaler.scale_, dtype=torch.float32).to(device)
-        targets = targets*std + mean
-        mean.cpu(), std.cpu()
+        targets = targets*self.scaler_scale.type_as(targets) + self.scaler_mean.type_as(targets)
         return targets
 
     def _compute_errors(self, outputs):
