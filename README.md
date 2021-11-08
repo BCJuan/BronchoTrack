@@ -10,6 +10,8 @@ Go to `experiments`. To prepare train, val and test splits, place the files (ima
 
 `python organize.py --root data/raw_data/ --new-root data/cleaned --split --compute-statistics`
 `python organize.py --root data/raw_data/ --new-root data/cleaned --split --clean --split-size=10`
+`python organize.py --root /mnt/DADES/datasetcalibracio/ --new-root data/cleaned --split --clean --split-size=20`
+`python organize.py --root /mnt/DADES/datasetcalibracio/ --new-root data/cleaned --split --clean --split-size=5 --cutdown=0.01`
 
 ## Training
 

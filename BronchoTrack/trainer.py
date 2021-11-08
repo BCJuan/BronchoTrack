@@ -47,7 +47,7 @@ class BronchoModel(pl.LightningModule):
 
     def training_step(self, batch, batch_idx):
         loss, z, py, ry = self._shared_step(batch, batch_idx)
-        self.log("train_loss", loss.detach(), on_step=False, on_epoch=True, logger=True, prog_bar=False, sync_dist=True)
+        self.log("train_loss", loss.detach(), on_step=True, on_epoch=False, logger=True, prog_bar=False, sync_dist=True)
         return {"loss": loss, "preds": z.detach(), "targets": torch.cat([py, ry], dim=-1)}
 
     def training_epoch_end(self, outputs):
@@ -94,7 +94,7 @@ class BronchoModel(pl.LightningModule):
         scheduler_dict = {
             'scheduler': optim.lr_scheduler.ExponentialLR(
                 optimizer,
-                0.99
+                0.995
             ),
             'interval': 'epoch',
         }

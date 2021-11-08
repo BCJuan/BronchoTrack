@@ -1,5 +1,6 @@
 import glob
 import os
+from types import new_class
 import pandas as pd
 import numpy as np
 import pathlib
@@ -10,7 +11,7 @@ from torchvision import transforms
 from PIL import Image
 from pickle import load
 import pytorch_lightning as pl
-from torchvision.transforms.transforms import ColorJitter
+from .dataorg import compute_angle_difference
 
 
 class BronchoDataset(data.Dataset):
@@ -26,7 +27,9 @@ class BronchoDataset(data.Dataset):
         self.items = glob.glob(os.path.join(self.root_folder, "*.csv"))
 
         self.position_label_names = ["shift_x", "shift_y", "shift_z"]
-        self.rotation_label_names = ["qx", "qy", "qz"]
+        self.rotation_label_names = ["Rx", "Ry", "Rz",
+                                     "Rx_base", "Ry_base", "Rz_base",
+                                     "Rx_dif", "Ry_dif", "Rz_dif"]
         parent_dir = pathlib.Path(__file__).parent.absolute()
         self.scaler = load(open(os.path.join(parent_dir, "scaler.pkl"), "rb"))
         stats = load(open(os.path.join(parent_dir, "statistics.pkl"), "rb"))
@@ -37,13 +40,22 @@ class BronchoDataset(data.Dataset):
 
     def __getitem__(self, index):
         dataframe = pd.read_csv(self.items[index])
+        # creates difference between base image and new
+        for i, j in zip(["Rx", "Ry", "Rz"], ["Rx_base", "Ry_base", "Rz_base"]):
+            dataframe[i + "_dif"] = \
+                            dataframe.apply(lambda x: compute_angle_difference(
+                                x[i], x[j]), axis=1)
         labels = dataframe.loc[:, self.position_label_names + self.rotation_label_names].to_numpy()
+        # select only dif pos and dif angle
+        labels = self.turnaround(labels)[:, [0, 1, 2, -3, -2, -1]]
         std_labels = self.scaler.transform(labels)
-        position_labels = std_labels[1:, :len(self.position_label_names)]
-        rotation_labels = std_labels[1:, len(self.position_label_names):]
+        # selects labels
+        position_labels = std_labels[:, :len(self.position_label_names)]
+        rotation_labels = std_labels[:, -3:]
+        # includes lobe as seond path folder
         images_paths = [
-            os.path.join(self.image_root, row["patient"], row["filename"])
-            for _, row in dataframe.iterrows()
+            os.path.join(self.image_root, row["patient"], row["filename"].split("_")[-4], row[name])
+            for _, row in dataframe.iterrows() for name in ["base_filename", "filename"]
         ]
         if self.train:
             t = self.train_image_transforms()
@@ -74,6 +86,15 @@ class BronchoDataset(data.Dataset):
                 transforms.Normalize(self.image_mean, self.image_std),
             ]
         )
+
+    def turnaround(self, array):
+        # we take one line and duplicate it with the turnaround version
+        # that is going to the same point we came from
+        new_array = -array.copy()
+        final_array = np.empty((array.shape[0] + new_array.shape[0], array.shape[1]))
+        final_array[::2, :] = array
+        final_array[1::2, :] = new_array
+        return final_array[:-1, :]
 
 
 class TrainTransform(object):

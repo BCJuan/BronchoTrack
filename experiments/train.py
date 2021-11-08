@@ -6,10 +6,11 @@ from BronchoTrack.trainer import BronchoModel
 from BronchoTrack.data.datasets import BronchoDataModule
 from pytorch_lightning.plugins import DDPPlugin
 
+
 def main(hparams):
     model = BronchoModel(pred_folder=hparams.pred_folder, lr=hparams.lr,
                          model=hparams.model)
-    trainer = Trainer.from_argparse_args(hparams, accumulate_grad_batches=8, plugins=DDPPlugin(find_unused_parameters=False))
+    trainer = Trainer.from_argparse_args(hparams, plugins=DDPPlugin(find_unused_parameters=False)) # , accumulate_grad_batches=8
     checkpoint_callback = checkpointing(hparams.ckpt_name)
     trainer.callbacks = [checkpoint_callback,
                          LearningRateMonitor(logging_interval='epoch')]

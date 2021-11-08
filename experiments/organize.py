@@ -10,6 +10,7 @@ def parse():
     parser.add_argument("--clean", dest="clean", action="store_true")
     parser.add_argument("--split-size", dest="split_size", type=int, default=10)
     parser.add_argument("--compute-statistics", dest="compute_statistics", action="store_true")
+    parser.add_argument("--cutdown", dest="cutdown", type=float, default=0.02)
     return parser.parse_args()
 
 
@@ -21,6 +22,7 @@ if __name__ == "__main__":
         split=args.split,
         split_size=args.split_size,
         clean=args.clean,
+        cutdown=args.cutdown
     )
     if args.compute_statistics:
         organizer.compute_statistics()
