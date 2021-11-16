@@ -74,7 +74,5 @@ class InvertedResidual(nn.Module):
             out = torch.cat((x1, self.branch2(x2)), dim=1)
         else:
             out = torch.cat((self.branch1(x), self.branch2(x)), dim=1)
-
         out = channel_shuffle(out, 2)
-
         return out

@@ -11,25 +11,23 @@ from torchvision import transforms
 from PIL import Image
 from pickle import load
 import pytorch_lightning as pl
-from .dataorg import compute_angle_difference
 
 
 class BronchoDataset(data.Dataset):
     def __init__(
-        self, root_folder, image_root, train=True, target_size=(256, 256)
+        self, root_folder, image_root, train=True, target_size=(256, 256), augment=False, length=15
     ):
         super().__init__()
         self.root_folder = root_folder
         self.image_root = image_root
         self.train = train
         self.target_size = target_size
-
+        self.augment = augment
+        self.length = length
         self.items = glob.glob(os.path.join(self.root_folder, "*.csv"))
 
-        self.position_label_names = ["shift_x", "shift_y", "shift_z"]
-        self.rotation_label_names = ["Rx", "Ry", "Rz",
-                                     "Rx_base", "Ry_base", "Rz_base",
-                                     "Rx_dif", "Ry_dif", "Rz_dif"]
+        self.position_label_names = ["pos_x_dif", "pos_y_dif", "pos_z_dif"]
+        self.rotation_label_names = ["Rx_dif", "Ry_dif", "Rz_dif"]
         parent_dir = pathlib.Path(__file__).parent.absolute()
         self.scaler = load(open(os.path.join(parent_dir, "scaler.pkl"), "rb"))
         stats = load(open(os.path.join(parent_dir, "statistics.pkl"), "rb"))
@@ -40,25 +38,21 @@ class BronchoDataset(data.Dataset):
 
     def __getitem__(self, index):
         dataframe = pd.read_csv(self.items[index])
-        # creates difference between base image and new
-        for i, j in zip(["Rx", "Ry", "Rz"], ["Rx_base", "Ry_base", "Rz_base"]):
-            dataframe[i + "_dif"] = \
-                            dataframe.apply(lambda x: compute_angle_difference(
-                                x[i], x[j]), axis=1)
-        labels = dataframe.loc[:, self.position_label_names + self.rotation_label_names].to_numpy()
-        # select only dif pos and dif angle
-        labels = self.turnaround(labels)[:, [0, 1, 2, -3, -2, -1]]
+        begin_index = np.random.randint(1, len(dataframe) - self.length)
+        labels = dataframe.loc[(begin_index + 1):(begin_index + self.length), self.position_label_names + self.rotation_label_names].to_numpy()
         std_labels = self.scaler.transform(labels)
         # selects labels
         position_labels = std_labels[:, :len(self.position_label_names)]
-        rotation_labels = std_labels[:, -3:]
+        rotation_labels = std_labels[:, -len(self.rotation_label_names):]
         # includes lobe as seond path folder
         images_paths = [
-            os.path.join(self.image_root, row["patient"], row["filename"].split("_")[-4], row[name])
-            for _, row in dataframe.iterrows() for name in ["base_filename", "filename"]
-        ]
+            os.path.join(self.image_root, row["patient"].strip(), row["filename"].split("_")[-4], row["filename"])
+            for _, row in dataframe.loc[begin_index:(begin_index + self.length), :].iterrows()]
         if self.train:
-            t = self.train_image_transforms()
+            if self.augment:
+                t = self.train_image_transforms()
+            else:
+                t = self.test_image_transforms()
         else:
             t = self.test_image_transforms()
         images = torch.stack([t(Image.open(i)) for i in images_paths])
@@ -86,15 +80,6 @@ class BronchoDataset(data.Dataset):
                 transforms.Normalize(self.image_mean, self.image_std),
             ]
         )
-
-    def turnaround(self, array):
-        # we take one line and duplicate it with the turnaround version
-        # that is going to the same point we came from
-        new_array = -array.copy()
-        final_array = np.empty((array.shape[0] + new_array.shape[0], array.shape[1]))
-        final_array[::2, :] = array
-        final_array[1::2, :] = new_array
-        return final_array[:-1, :]
 
 
 class TrainTransform(object):
@@ -125,7 +110,7 @@ class TrainTransform(object):
 
 class BronchoDataModule(pl.LightningDataModule):
 
-    def __init__(self, root_folder, image_root, batch_size, target_size=(256, 256)):
+    def __init__(self, root_folder, image_root, batch_size, target_size=(256, 256), augment=False):
         super().__init__()
         self.root_folder = root_folder
         self.image_root = image_root
@@ -135,9 +120,10 @@ class BronchoDataModule(pl.LightningDataModule):
         self.testpath = os.path.join(root_folder, "test")
         self.valpath = os.path.join(root_folder, "val")
         self.batch_size = batch_size
+        self.augment = augment
 
     def setup(self, stage: Optional[str] = None):
-        self.train_set = BronchoDataset(self.trainpath, self.image_root, train=True, target_size=self.target_size)
+        self.train_set = BronchoDataset(self.trainpath, self.image_root, train=True, target_size=self.target_size, augment=self.augment)
         self.test_set = BronchoDataset(self.testpath, self.image_root, train=False, target_size=self.target_size)
         self.val_set = BronchoDataset(self.valpath, self.image_root, train=False, target_size=self.target_size)
 
@@ -146,7 +132,7 @@ class BronchoDataModule(pl.LightningDataModule):
         return mnist_train
 
     def test_dataloader(self):
-        mnist_test = data.DataLoader(self.test_set, batch_size=self.batch_size, num_workers=8)
+        mnist_test = data.DataLoader(self.train_set, batch_size=self.batch_size, num_workers=8)
         return mnist_test
 
     def val_dataloader(self):

@@ -187,3 +187,51 @@ class BronchoNetDoubleLateFusion(nn.Module):
                 for j, grandchild in enumerate(child[1][:depth]):
                     new_backbone.add_module(str(j), grandchild)
         return new_backbone
+
+
+class BronchoNetDoubleEarlyFusion(nn.Module):
+
+    def __init__(self):
+        super().__init__()
+        self.conv_t = nn.Sequential(
+            nn.Conv2d(3, 16, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(16),
+            nn.SiLU(inplace=True)
+        )
+        self.conv_t1 = nn.Sequential(
+            nn.Conv2d(3, 16, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(16),
+            nn.SiLU(inplace=True)
+        )
+        self.backbone = models.efficientnet_b0(pretrained=True)
+        self.backbone.features[0] = nn.Sequential(
+            nn.Conv2d(32, 32, kernel_size=3, stride=2, padding=1, bias=False),
+            nn.BatchNorm2d(32),
+            nn.SiLU(inplace=True)
+        )
+        self.backbone.classifier = nn.Sequential(
+            nn.Dropout(p=0.2, inplace=True),
+            nn.Linear(in_features=1280, out_features=256)
+        )
+        self.linear1 = nn.Sequential(
+            nn.Dropout(p=0.2, inplace=True),
+            nn.Linear(in_features=256, out_features=64),
+            nn.SiLU(inplace=True),
+            nn.Dropout(p=0.1, inplace=True),
+            nn.Linear(in_features=64, out_features=32),
+            nn.SiLU(inplace=True),
+            nn.Linear(32, 6))
+
+    def forward(self, x):
+        feature_outputs = []
+        # images == [b, T, C, H, W]
+        for t in range(1, x.shape[1]):
+            ot = self.conv_t(x[:, t, :, :, :])
+            ot1 = self.conv_t1(x[:, t - 1, :, :, :])
+            output = torch.cat([ot, ot1], dim=1)
+            feature_outputs.append(self.backbone(output))   
+        feature_outputs = torch.stack(feature_outputs).permute(1, 0, 2)
+        # [b, t, 64]
+        output = self.linear1(output)
+        # we do not include (N, t,Hout​)=0
+        return output

@@ -1,7 +1,19 @@
 import torch
 from torchmetrics import Metric
 
+
 # TODO: review metrics with Carles
+def direction_vec(preds):
+    # batch, step, pose
+    # preds[0]==Rx==theta1==roll, preds[1]==Ry==theta2==pitch, preds[2]==Rz==theta3
+    # transform from vector (1, 0, 0)
+    return torch.tensor([
+        torch.cos(preds[1])*torch.cos(preds[2]),
+        torch.sin(preds[0])*torch.sin(preds[1])*torch.cos(preds[2]) +
+        torch.cos(preds[0])*torch.sin(preds[2]),
+        -torch.cos(preds[0])*torch.sin(preds[1])*torch.cos(preds[2]) +
+        torch.sin(preds[0])*torch.sin(preds[2])
+    ]).type_as(preds)
 
 
 class EuclideanDistance(Metric):
@@ -55,7 +67,7 @@ class DirectionError(Metric):
     @staticmethod
     def inverse_cos(preds, targets):
         return torch.acos(
-            torch.clamp(torch.dot(preds, targets), -1, 1))
+            torch.dot(direction_vec(preds), direction_vec(targets)))
 
 
 class NeedleError(Metric):
@@ -65,7 +77,7 @@ class NeedleError(Metric):
     positional and second 3 angular
     """
 
-    def __init__(self, distance=3):
+    def __init__(self, distance=1):
         super().__init__()
         self.add_state("squared_sum", torch.tensor(0, dtype=torch.float32),
                        dist_reduce_fx="sum")
@@ -82,5 +94,5 @@ class NeedleError(Metric):
     @staticmethod
     def needle(preds, targets, distance=3):
         return torch.sqrt(torch.sum((
-            preds[:3] + distance*preds[3:] -
-            (targets[:3] + distance*targets[3:]))**2))
+            preds[:3] + distance*direction_vec(preds[3:]) -
+            (targets[:3] + distance*direction_vec(targets[3:])))**2))

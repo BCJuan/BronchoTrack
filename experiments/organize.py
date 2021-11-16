@@ -1,28 +1,25 @@
 import argparse
 from BronchoTrack.data import dataorg
-
+from BronchoTrack.utils import fix_randseed
 
 def parse():
     parser = argparse.ArgumentParser()
     parser.add_argument("--root", dest="root", type=str, required=True)
     parser.add_argument("--new-root", dest="new_root", type=str, required=True)
-    parser.add_argument("--split", dest="split", action="store_true")
     parser.add_argument("--clean", dest="clean", action="store_true")
-    parser.add_argument("--split-size", dest="split_size", type=int, default=10)
+    parser.add_argument("--n-trajectories", dest="n_trajectories", type=int, default=75)
     parser.add_argument("--compute-statistics", dest="compute_statistics", action="store_true")
-    parser.add_argument("--cutdown", dest="cutdown", type=float, default=0.02)
     return parser.parse_args()
 
 
 if __name__ == "__main__":
+    fix_randseed(42)
     args = parse()
     organizer = dataorg.BronchoOrganizer(
         args.root,
         args.new_root,
-        split=args.split,
-        split_size=args.split_size,
+        n_trajectories=args.n_trajectories,
         clean=args.clean,
-        cutdown=args.cutdown
     )
     if args.compute_statistics:
         organizer.compute_statistics()
