@@ -38,16 +38,24 @@ class BronchoDataset(data.Dataset):
 
     def __getitem__(self, index):
         dataframe = pd.read_csv(self.items[index])
-        begin_index = np.random.randint(1, len(dataframe) - self.length)
-        labels = dataframe.loc[(begin_index + 1):(begin_index + self.length), self.position_label_names + self.rotation_label_names].to_numpy()
+        if self.train:
+            begin_index = np.random.randint(1, len(dataframe) - self.length)
+            labels = dataframe.loc[(begin_index + 1):(begin_index + self.length), self.position_label_names + self.rotation_label_names].to_numpy()
+            # includes lobe as seond path folder
+            images_paths = [
+                os.path.join(self.image_root, row["patient"].strip(), row["filename"].split("_")[-4], row["filename"])
+                for _, row in dataframe.loc[begin_index:(begin_index + self.length), :].iterrows()]
+        else:
+            labels = dataframe.loc[1:, self.position_label_names + self.rotation_label_names].to_numpy()
+            # includes lobe as seond path folder
+            images_paths = [
+                os.path.join(self.image_root, row["patient"].strip(), row["filename"].split("_")[-4], row["filename"])
+                for _, row in dataframe.iterrows()]
         std_labels = self.scaler.transform(labels)
         # selects labels
         position_labels = std_labels[:, :len(self.position_label_names)]
         rotation_labels = std_labels[:, -len(self.rotation_label_names):]
-        # includes lobe as seond path folder
-        images_paths = [
-            os.path.join(self.image_root, row["patient"].strip(), row["filename"].split("_")[-4], row["filename"])
-            for _, row in dataframe.loc[begin_index:(begin_index + self.length), :].iterrows()]
+
         if self.train:
             if self.augment:
                 t = self.train_image_transforms()
@@ -132,7 +140,7 @@ class BronchoDataModule(pl.LightningDataModule):
         return mnist_train
 
     def test_dataloader(self):
-        mnist_test = data.DataLoader(self.train_set, batch_size=self.batch_size, num_workers=8)
+        mnist_test = data.DataLoader(self.test_set, batch_size=self.batch_size, num_workers=8)
         return mnist_test
 
     def val_dataloader(self):

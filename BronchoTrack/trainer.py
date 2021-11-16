@@ -131,7 +131,7 @@ class BronchoModel(pl.LightningModule):
         _ = [self.derror(preds[b, t, 3:], targets[b, t, 3:])
              for t in range(targets.shape[1]) for b in range(targets.shape[0])]
         _ = [self.nerror(preds[b, t, :], targets[b, t, :])
-             for t in range(targets.shape[1]) for b in range(targets.shape[0])]        
+             for t in range(targets.shape[1]) for b in range(targets.shape[0])]   
 
     def _save_test_results(self, outputs):
         targets = self._unscale(outputs["targets"])
