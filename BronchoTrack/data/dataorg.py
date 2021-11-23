@@ -12,7 +12,7 @@ from tqdm import tqdm
 
 
 class BronchoOrganizer(abc.ABC):
-    def __init__(self, origin_root, new_root, n_trajectories=75, clean=True):
+    def __init__(self, origin_root, new_root, n_trajectories=75, clean=True, test_pacient="P18", only_val=False):
         """[summary]
 
         Args:
@@ -25,6 +25,8 @@ class BronchoOrganizer(abc.ABC):
         self.new_root = new_root
         self.n_trajectories = n_trajectories
         self.split_length = 876
+        self.test_pacient = test_pacient
+        self.only_val = only_val
         if clean:
             self._clean()
 
@@ -71,17 +73,19 @@ class BronchoOrganizer(abc.ABC):
             )
             for column in self.columns_use[1:7]:
                 seq_level_lobe_df[column + "_dif"] = seq_level_lobe_df[column].diff(1).bfill()         
-            if seq_level_lobe_df.loc[0, "patient"] != "LENS_P18_14_01_2016_INSP_CPAP":
+            if str(self.test_pacient) not in seq_level_lobe_df.loc[0, "patient"]:
                 destname = os.path.join(self.new_root, "train", extension_name)
             else:
-                if lobe == "ur" or lobe == "bl":
-                    destname = os.path.join(self.new_root, "val", extension_name)
-                else:
+                if (lobe == "ul" or lobe == "br") and not self.only_val:
                     destname = os.path.join(self.new_root, "test", extension_name)
+                else:
+                    destname = os.path.join(self.new_root, "val", extension_name)
             seq_level_lobe_df.to_csv(destname)
 
     def _clean(self):
-        shutil.rmtree(self.new_root)
+        shutil.rmtree(os.path.join(self.new_root, "train"))
+        shutil.rmtree(os.path.join(self.new_root, "test"))
+        shutil.rmtree(os.path.join(self.new_root, "val"))
 
     def compute_statistics(self):
         self.compute_label_statistics()
@@ -100,16 +104,17 @@ class BronchoOrganizer(abc.ABC):
     def image_statistis(self):
         n_images = 0
         for folder in os.listdir(self.origin_root):
-            if folder != "LENS_P18_14_01_2016_INSP_CPAP":
+            if str(self.test_pacient) not in folder:
                 folderpath = os.path.join(self.origin_root, folder)
                 if os.path.isdir(folderpath):
                     for subfolder in os.listdir(folderpath):
                         subfolder_path = os.path.join(folderpath, subfolder)
                         if os.path.isdir(subfolder_path):
                             n_images += len(os.listdir(subfolder_path))
+        print("N Images Training", n_images)
         means = []
         for folder in tqdm(os.listdir(self.origin_root), total=len(os.listdir(self.origin_root))):
-            if folder != "LENS_P18_14_01_2016_INSP_CPAP":
+            if str(self.test_pacient) not in folder:
                 folderpath = os.path.join(self.origin_root, folder)
                 if os.path.isdir(folderpath):
                     for subfolder in os.listdir(folderpath):
@@ -122,7 +127,7 @@ class BronchoOrganizer(abc.ABC):
         avg_mean = np.sum(np.stack(means), axis=0)
         stds = []
         for folder in tqdm(os.listdir(self.origin_root), total=len(os.listdir(self.origin_root))):
-            if folder != "LENS_P18_14_01_2016_INSP_CPAP":
+            if str(self.test_pacient) not in folder:
                 folderpath = os.path.join(self.origin_root, folder)
                 if os.path.isdir(folderpath):
                     for subfolder in os.listdir(folderpath):

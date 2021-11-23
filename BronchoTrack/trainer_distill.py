@@ -6,6 +6,7 @@ import torch
 from torch import nn
 from torch import optim
 import pytorch_lightning as pl
+from torch._C import default_generator
 from tqdm import tqdm
 from .models import bronchonet, offsetnet
 from .metrics import EuclideanDistance, NeedleError, DirectionError
@@ -45,11 +46,10 @@ class BronchoModel(pl.LightningModule):
         self.register_buffer("scaler_mean", torch.tensor(self.scaler.mean_, dtype=torch.float32))
         self.register_buffer("scaler_scale", torch.tensor(self.scaler.scale_, dtype=torch.float32))
         self.perror, self.derror, self.nerror = EuclideanDistance(), DirectionError(), NeedleError()
-        self.lr = lr
         self.pred_folder = pred_folder
         os.makedirs(pred_folder, exist_ok=True)
+        self.lr = lr
         self.save_hyperparameters()
-
 
     @staticmethod
     def add_model_specific_args(parent_parser):
@@ -91,16 +91,16 @@ class BronchoModel(pl.LightningModule):
 
     def test_step(self, batch, batch_idx):
         test_loss, loss_p, loss_r, z, py, ry = self._shared_step(batch, batch_idx)
-        return {"loss": test_loss, "preds": z, "targets": torch.cat([py, ry], dim=-1), "filenames": batch["filename"]}
+        return {"loss": test_loss, "preds": z, "targets": torch.cat([py, ry], dim=-1)}
 
     def test_epoch_end(self, outputs) -> None:
         self.perror.reset(), self.derror.reset(), self.nerror.reset()
         for output in tqdm(outputs, total=len(outputs)):
             self._compute_errors(output)
             self._save_test_results(output)
-        # self.log("Test Position Error", self.perror, on_step=False, on_epoch=True, logger=True, prog_bar=False, sync_dist=True)
-        # self.log("Test Direction Error", self.derror, on_step=False, on_epoch=True, logger=True, prog_bar=False, sync_dist=True)
-        # self.log("Test Needle Error", self.nerror, on_step=False, on_epoch=True, logger=True, prog_bar=False, sync_dist=True)
+        self.log("Test Position Error", self.perror, on_step=False, on_epoch=True, logger=True, prog_bar=False, sync_dist=True)
+        self.log("Test Direction Error", self.derror, on_step=False, on_epoch=True, logger=True, prog_bar=False, sync_dist=True)
+        self.log("Test Needle Error", self.nerror, on_step=False, on_epoch=True, logger=True, prog_bar=False, sync_dist=True)
 
     def _shared_step(self, batch, batch_idx):
         x, py, ry = batch["images"], batch["pos_labels"], batch["rot_labels"]
@@ -140,8 +140,8 @@ class BronchoModel(pl.LightningModule):
     def _save_test_results(self, outputs):
         targets = self._unscale(outputs["targets"])
         preds = self._unscale(outputs["preds"])
-        for pred, target, filename in zip(preds, targets, outputs["filenames"]):
+        for pred, target in zip(preds, targets):
             df = pd.DataFrame(columns=["shift_x", "shift_y", "shift_z", "Rx_dif", "Ry_dif", "Rz_dif",
                                        "gt_shift_x", "gt_shift_y", "gt_shift_z", "gt_Rx_dif", "gt_Ry_dif", "gt_Rz_dif"],
                               data=torch.cat((pred, target), dim=-1).cpu().numpy())
-            df.to_csv(os.path.join(self.pred_folder, os.path.basename(filename)))
+            df.to_csv(os.path.join(self.pred_folder, str(len(os.listdir(self.pred_folder))) + ".csv"))

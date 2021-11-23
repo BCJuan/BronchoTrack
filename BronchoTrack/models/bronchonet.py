@@ -79,19 +79,18 @@ class BronchoNetDoubleTemporalLateFusion(nn.Module):
 
     def __init__(self):
         super().__init__()
-        self.backbone_t = self._build_backbone(models.efficientnet_b0(pretrained=True), 5)
-        self.backbone_t1 = self._build_backbone(models.efficientnet_b0(pretrained=True), 5)
+        self.backbone_t = self._build_backbone(models.efficientnet_b0(pretrained=True), 4)
+        self.backbone_t1 = self._build_backbone(models.efficientnet_b0(pretrained=True), 4)
 
         self.fusion = nn.Sequential(
-            nn.Conv2d(160, 64, kernel_size=3, padding=1),
+            nn.Conv2d(80, 64, kernel_size=3, padding=1),
             nn.BatchNorm2d(64),
             nn.SiLU(inplace=True)
         )
 
         self.latebone = nn.Sequential(
-            InvertedResidual(64, 64, 1),
-            InvertedResidual(64, 32, 2),
-            InvertedResidual(32, 32, 1),
+            InvertedResidual(64, 48, 2),
+            InvertedResidual(48, 32, 2),
             InvertedResidual(32, 16, 2)
         )
         # NOTE: i know it is 356 for depth 5 of backbone, but we could adapt

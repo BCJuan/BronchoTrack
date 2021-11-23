@@ -67,7 +67,8 @@ class BronchoDataset(data.Dataset):
         return {
             "images": images,
             "pos_labels": torch.tensor(position_labels, dtype=torch.float32),
-            "rot_labels": torch.tensor(rotation_labels, dtype=torch.float32)
+            "rot_labels": torch.tensor(rotation_labels, dtype=torch.float32),
+            "filename": self.items[index]
         }
 
     def test_image_transforms(self):
@@ -118,7 +119,7 @@ class TrainTransform(object):
 
 class BronchoDataModule(pl.LightningDataModule):
 
-    def __init__(self, root_folder, image_root, batch_size, target_size=(256, 256), augment=False):
+    def __init__(self, root_folder, image_root, batch_size, target_size=(256, 256), augment=False, only_val=False):
         super().__init__()
         self.root_folder = root_folder
         self.image_root = image_root
@@ -129,11 +130,15 @@ class BronchoDataModule(pl.LightningDataModule):
         self.valpath = os.path.join(root_folder, "val")
         self.batch_size = batch_size
         self.augment = augment
+        self.only_val = only_val
 
     def setup(self, stage: Optional[str] = None):
         self.train_set = BronchoDataset(self.trainpath, self.image_root, train=True, target_size=self.target_size, augment=self.augment)
-        self.test_set = BronchoDataset(self.testpath, self.image_root, train=False, target_size=self.target_size)
-        self.val_set = BronchoDataset(self.valpath, self.image_root, train=False, target_size=self.target_size)
+        if self.only_val:
+            self.test_set = BronchoDataset(self.valpath, self.image_root, train=False, target_size=self.target_size)
+        else:
+            self.test_set = BronchoDataset(self.testpath, self.image_root, train=False, target_size=self.target_size)
+        self.val_set = BronchoDataset(self.valpath, self.image_root, train=True, target_size=self.target_size, augment=False)
 
     def train_dataloader(self):
         mnist_train = data.DataLoader(self.train_set, batch_size=self.batch_size, num_workers=8)
