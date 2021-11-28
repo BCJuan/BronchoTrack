@@ -8,8 +8,11 @@ from torch import optim
 import pytorch_lightning as pl
 from tqdm import tqdm
 from .models import bronchonet, offsetnet
-from .metrics import EuclideanDistance, NeedleError, DirectionError
-from .losses import CosLoss, DirectionLoss, QuaternionDistanceLoss
+from .metrics import (
+    EuclideanDistance, NeedleError, DirectionError,
+    CosMetric, QuatMetric, MSE
+)
+from .losses import CosLoss, DirectionLoss, QuaternionDistanceLoss, EuclideanDistanceLoss
 
 
 def choose_model(model):
@@ -23,7 +26,7 @@ def choose_model(model):
     return switch.get(model, "Not an available model")
 
 
-def choose_loss(loss):
+def choose_rot_loss(loss):
     switch = {
         "mse": nn.MSELoss(),
         "cos": CosLoss(),
@@ -33,23 +36,28 @@ def choose_loss(loss):
     return switch.get(loss, "Not an available loss")
 
 
+def choose_pos_loss(loss):
+    switch = {
+        "mse": nn.MSELoss(),
+        "euclidean": EuclideanDistanceLoss(),
+    }
+    return switch.get(loss, "Not an available loss")    
+
+
 class BronchoModel(pl.LightningModule):
 
-    def __init__(self, pred_folder="./data/cleaned/preds", lr=1e-4, model="singletemporal", loss="mse"):
+    def __init__(self, pred_folder="./data/cleaned/preds", lr=1e-4, model="singletemporal", rot_loss="mse", pos_loss="mse"):
         super().__init__()
         self.model = choose_model(model)
-        self.loss = nn.MSELoss()
-        self.loss1 = choose_loss(loss)
-        parent_dir = pathlib.Path(__file__).parent.absolute()
-        self.scaler = load(open(os.path.join(parent_dir, "data", "scaler.pkl"), "rb"))
-        self.register_buffer("scaler_mean", torch.tensor(self.scaler.mean_, dtype=torch.float32))
-        self.register_buffer("scaler_scale", torch.tensor(self.scaler.scale_, dtype=torch.float32))
+        self.loss = choose_pos_loss(pos_loss)
+        self.loss1 = choose_rot_loss(rot_loss)
         self.perror, self.derror, self.nerror = EuclideanDistance(), DirectionError(), NeedleError()
+        self.mse, self.cosx, self.cosy, self.cosz = MSE(), CosMetric(0), CosMetric(1), CosMetric(2)
+        self.cos, self.quat = CosMetric(), QuatMetric()
         self.lr = lr
         self.pred_folder = pred_folder
         os.makedirs(pred_folder, exist_ok=True)
         self.save_hyperparameters()
-
 
     @staticmethod
     def add_model_specific_args(parent_parser):
@@ -57,7 +65,8 @@ class BronchoModel(pl.LightningModule):
         parser.add_argument("--lr", dest="lr", type=float, default=1e-4)
         parser.add_argument("--pred-folder", dest="pred_folder", type=str, default="./data/cleaned/preds")
         parser.add_argument("--model", dest="model", type=str, default="singletemporal")
-        parser.add_argument("--loss", dest="loss", type=str, default="mse")
+        parser.add_argument("--rot-loss", dest="rot_loss", type=str, default="mse")
+        parser.add_argument("--pos-loss", dest="pos_loss", type=str, default="mse")
         return parent_parser
 
     def training_step(self, batch, batch_idx):
@@ -68,11 +77,19 @@ class BronchoModel(pl.LightningModule):
         return {"loss": loss, "preds": z.detach(), "targets": torch.cat([py, ry], dim=-1)}
 
     def training_epoch_end(self, outputs):
+        self.perror.reset(), self.derror.reset(), self.nerror.reset(), self.cos.reset()
+        self.cosx.reset(), self.cosy.reset(), self.cosz.reset, self.mse.reset(), self.quat.reset()
         for output in outputs:
             self._compute_errors(output)
         self.log("Train Position Error", self.perror, on_step=False, on_epoch=True, logger=True, prog_bar=False, sync_dist=True)
         self.log("Train Direction Error", self.derror, on_step=False, on_epoch=True, logger=True, prog_bar=False, sync_dist=True)
         self.log("Train Needle Error", self.nerror, on_step=False, on_epoch=True, logger=True, prog_bar=False, sync_dist=True)
+        self.log("Train MSE Angle Error", self.mse, on_step=False, on_epoch=True, logger=True, prog_bar=False, sync_dist=True)
+        self.log("Train COS x Angle Error", self.cosx, on_step=False, on_epoch=True, logger=True, prog_bar=False, sync_dist=True)
+        self.log("Train COS y Angle Error", self.cosy, on_step=False, on_epoch=True, logger=True, prog_bar=False, sync_dist=True)
+        self.log("Train COS z Angle Error", self.cosz, on_step=False, on_epoch=True, logger=True, prog_bar=False, sync_dist=True)
+        self.log("Train COS Angle Error", self.cos, on_step=False, on_epoch=True, logger=True, prog_bar=False, sync_dist=True)
+        self.log("Train Quat Angle Error", self.quat, on_step=False, on_epoch=True, logger=True, prog_bar=False, sync_dist=True)
 
     def validation_step(self, batch, batch_idx):
         val_loss, val_loss_p, val_loss_r, z, py, ry = self._shared_step(batch, batch_idx)
@@ -82,12 +99,19 @@ class BronchoModel(pl.LightningModule):
         return {"loss": val_loss, "preds": z, "targets": torch.cat([py, ry], dim=-1)}
 
     def validation_epoch_end(self, outputs) -> None:
-        self.perror.reset(), self.derror.reset(), self.nerror.reset()
+        self.perror.reset(), self.derror.reset(), self.nerror.reset(), self.cos.reset()
+        self.cosx.reset(), self.cosy.reset(), self.cosz.reset, self.mse.reset(), self.quat.reset()
         for output in outputs:
             self._compute_errors(output)
         self.log("Val Position Error", self.perror, on_step=False, on_epoch=True, logger=True, prog_bar=False, sync_dist=True)
         self.log("Val Direction Error", self.derror, on_step=False, on_epoch=True, logger=True, prog_bar=False, sync_dist=True)
         self.log("Val Needle Error", self.nerror, on_step=False, on_epoch=True, logger=True, prog_bar=False, sync_dist=True)
+        self.log("Val MSE Angle Error", self.mse, on_step=False, on_epoch=True, logger=True, prog_bar=False, sync_dist=True)
+        self.log("Val COS x Angle Error", self.cosx, on_step=False, on_epoch=True, logger=True, prog_bar=False, sync_dist=True)
+        self.log("Val COS y Angle Error", self.cosy, on_step=False, on_epoch=True, logger=True, prog_bar=False, sync_dist=True)
+        self.log("Val COS z Angle Error", self.cosz, on_step=False, on_epoch=True, logger=True, prog_bar=False, sync_dist=True)
+        self.log("Val COS Angle Error", self.cos, on_step=False, on_epoch=True, logger=True, prog_bar=False, sync_dist=True)
+        self.log("Val Quat Angle Error", self.quat, on_step=False, on_epoch=True, logger=True, prog_bar=False, sync_dist=True)
 
     def test_step(self, batch, batch_idx):
         test_loss, loss_p, loss_r, z, py, ry = self._shared_step(batch, batch_idx)
@@ -98,48 +122,51 @@ class BronchoModel(pl.LightningModule):
         for output in tqdm(outputs, total=len(outputs)):
             self._compute_errors(output)
             self._save_test_results(output)
-        # self.log("Test Position Error", self.perror, on_step=False, on_epoch=True, logger=True, prog_bar=False, sync_dist=True)
-        # self.log("Test Direction Error", self.derror, on_step=False, on_epoch=True, logger=True, prog_bar=False, sync_dist=True)
-        # self.log("Test Needle Error", self.nerror, on_step=False, on_epoch=True, logger=True, prog_bar=False, sync_dist=True)
 
     def _shared_step(self, batch, batch_idx):
         x, py, ry = batch["images"], batch["pos_labels"], batch["rot_labels"]
         z = self.model(x)
         loss_p = self.loss(z[:, :, :3], py)
-        z_un = self._unscale(z)
-        labels_un = self._unscale(torch.cat([py, ry], dim=-1))
-        loss_r = self.loss1(z_un[:, :, 3:], labels_un[:, :, 3:])
+        loss_r = self.loss1(z[:, :, 3:], ry)
         loss = loss_p + loss_r
         return loss, loss_p, loss_r, z, py, ry
 
     def configure_optimizers(self):
-        optimizer = optim.Adam(self.parameters(), lr=self.lr)
+        optimizer = optim.Adam(filter(lambda p: p.requires_grad, self.parameters()), lr=self.lr)
         scheduler_dict = {
             'scheduler': optim.lr_scheduler.ExponentialLR(
                 optimizer,
-                0.995
+                0.9995
             ),
             'interval': 'epoch',
         }
         return {'optimizer': optimizer, 'lr_scheduler': scheduler_dict}
 
-    def _unscale(self, targets):
-        targets = targets*self.scaler_scale.type_as(targets) + self.scaler_mean.type_as(targets)
-        return targets
-
     def _compute_errors(self, outputs):
-        targets = self._unscale(outputs["targets"])
-        preds = self._unscale(outputs["preds"])
+        targets = outputs["targets"]
+        preds = outputs["preds"]
         _ = [self.perror(preds[b, t, :3], targets[b, t, :3])
              for t in range(targets.shape[1]) for b in range(targets.shape[0])]
         _ = [self.derror(preds[b, t, 3:], targets[b, t, 3:])
              for t in range(targets.shape[1]) for b in range(targets.shape[0])]
         _ = [self.nerror(preds[b, t, :], targets[b, t, :])
-             for t in range(targets.shape[1]) for b in range(targets.shape[0])]   
+             for t in range(targets.shape[1]) for b in range(targets.shape[0])]
+        _ = [self.mse(preds[b, t, 3:], targets[b, t, 3:])
+             for t in range(targets.shape[1]) for b in range(targets.shape[0])]
+        _ = [self.cosx(preds[b, t, 3:], targets[b, t, 3:])
+             for t in range(targets.shape[1]) for b in range(targets.shape[0])]
+        _ = [self.cosy(preds[b, t, 3:], targets[b, t, 3:])
+             for t in range(targets.shape[1]) for b in range(targets.shape[0])]
+        _ = [self.cosz(preds[b, t, 3:], targets[b, t, 3:])
+             for t in range(targets.shape[1]) for b in range(targets.shape[0])]
+        _ = [self.cos(preds[b, t, 3:], targets[b, t, 3:])
+             for t in range(targets.shape[1]) for b in range(targets.shape[0])]
+        _ = [self.quat(preds[b, t, 3:], targets[b, t, 3:])
+             for t in range(targets.shape[1]) for b in range(targets.shape[0])]
 
     def _save_test_results(self, outputs):
-        targets = self._unscale(outputs["targets"])
-        preds = self._unscale(outputs["preds"])
+        targets = outputs["targets"]
+        preds = outputs["preds"]
         for pred, target, filename in zip(preds, targets, outputs["filenames"]):
             df = pd.DataFrame(columns=["shift_x", "shift_y", "shift_z", "Rx_dif", "Ry_dif", "Rz_dif",
                                        "gt_shift_x", "gt_shift_y", "gt_shift_z", "gt_Rx_dif", "gt_Ry_dif", "gt_Rz_dif"],

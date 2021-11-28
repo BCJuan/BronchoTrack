@@ -15,15 +15,13 @@ import pytorch_lightning as pl
 
 class BronchoDataset(data.Dataset):
     def __init__(
-        self, root_folder, image_root, train=True, target_size=(256, 256), augment=False, length=15
-    ):
+        self, root_folder, image_root, train=True, target_size=(256, 256), augment=False):
         super().__init__()
         self.root_folder = root_folder
         self.image_root = image_root
         self.train = train
         self.target_size = target_size
         self.augment = augment
-        self.length = length
         self.items = glob.glob(os.path.join(self.root_folder, "*.csv"))
 
         self.position_label_names = ["pos_x_dif", "pos_y_dif", "pos_z_dif"]
@@ -38,23 +36,15 @@ class BronchoDataset(data.Dataset):
 
     def __getitem__(self, index):
         dataframe = pd.read_csv(self.items[index])
-        if self.train:
-            begin_index = np.random.randint(1, len(dataframe) - self.length)
-            labels = dataframe.loc[(begin_index + 1):(begin_index + self.length), self.position_label_names + self.rotation_label_names].to_numpy()
-            # includes lobe as seond path folder
-            images_paths = [
-                os.path.join(self.image_root, row["patient"].strip(), row["filename"].split("_")[-4], row["filename"])
-                for _, row in dataframe.loc[begin_index:(begin_index + self.length), :].iterrows()]
-        else:
-            labels = dataframe.loc[1:, self.position_label_names + self.rotation_label_names].to_numpy()
-            # includes lobe as seond path folder
-            images_paths = [
-                os.path.join(self.image_root, row["patient"].strip(), row["filename"].split("_")[-4], row["filename"])
-                for _, row in dataframe.iterrows()]
-        std_labels = self.scaler.transform(labels)
+        labels = dataframe.loc[1:, self.position_label_names + self.rotation_label_names].to_numpy()
+        # includes lobe as seond path folder
+        images_paths = [
+            os.path.join(self.image_root, row["patient"].strip(), row["filename"].split("_")[-4], row["filename"])
+            for _, row in dataframe.iterrows()]
+        # std_labels = self.scaler.transform(labels)
         # selects labels
-        position_labels = std_labels[:, :len(self.position_label_names)]
-        rotation_labels = std_labels[:, -len(self.rotation_label_names):]
+        position_labels = labels[:, :len(self.position_label_names)]
+        rotation_labels = labels[:, -len(self.rotation_label_names):]
 
         if self.train:
             if self.augment:
@@ -76,7 +66,6 @@ class BronchoDataset(data.Dataset):
             [
                 transforms.ToTensor(),
                 transforms.Resize(self.target_size),
-                transforms.Normalize(self.image_mean, self.image_std),
             ]
         )
 
@@ -86,7 +75,6 @@ class BronchoDataset(data.Dataset):
                 TrainTransform(),
                 transforms.ToTensor(),
                 transforms.Resize(self.target_size),
-                transforms.Normalize(self.image_mean, self.image_std),
             ]
         )
 
@@ -119,7 +107,7 @@ class TrainTransform(object):
 
 class BronchoDataModule(pl.LightningDataModule):
 
-    def __init__(self, root_folder, image_root, batch_size, target_size=(256, 256), augment=False, only_val=False):
+    def __init__(self, root_folder, image_root, batch_size, target_size=(256, 256), augment=False):
         super().__init__()
         self.root_folder = root_folder
         self.image_root = image_root
@@ -130,18 +118,14 @@ class BronchoDataModule(pl.LightningDataModule):
         self.valpath = os.path.join(root_folder, "val")
         self.batch_size = batch_size
         self.augment = augment
-        self.only_val = only_val
 
     def setup(self, stage: Optional[str] = None):
         self.train_set = BronchoDataset(self.trainpath, self.image_root, train=True, target_size=self.target_size, augment=self.augment)
-        if self.only_val:
-            self.test_set = BronchoDataset(self.valpath, self.image_root, train=False, target_size=self.target_size)
-        else:
-            self.test_set = BronchoDataset(self.testpath, self.image_root, train=False, target_size=self.target_size)
+        self.test_set = BronchoDataset(self.testpath, self.image_root, train=False, target_size=self.target_size)
         self.val_set = BronchoDataset(self.valpath, self.image_root, train=True, target_size=self.target_size, augment=False)
 
     def train_dataloader(self):
-        mnist_train = data.DataLoader(self.train_set, batch_size=self.batch_size, num_workers=8)
+        mnist_train = data.DataLoader(self.train_set, batch_size=self.batch_size, num_workers=8, shuffle=True)
         return mnist_train
 
     def test_dataloader(self):

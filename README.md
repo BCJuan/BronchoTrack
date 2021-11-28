@@ -10,6 +10,8 @@ Go to `experiments`. To prepare train, val and test splits, place the files (ima
 
 `python organize.py --root /mnt/DADES/datasetcalibracio/ --new-root data/cleaned --clean --n-trajectories 15 --test-pacient P18 --only-val`
 
+`python organize.py --root /mnt/DADES/datasetcalibracio/ --new-root data/cleaned --clean --n-trajectories 15 --only-val --intra-patient`
+
 ## Training
 
 models: "singletemporal", "doubleearlytemporal", "doublelatetemporal", "doublelate", "offsetnet"

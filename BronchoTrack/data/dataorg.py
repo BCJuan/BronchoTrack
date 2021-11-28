@@ -3,16 +3,19 @@ import os
 import shutil
 import pathlib
 import glob
+from numpy import random
+from numpy.core.defchararray import index
 import pandas as pd
 import numpy as np
-from sklearn.preprocessing import StandardScaler
+from sklearn.model_selection import train_test_split
 from pickle import dump
 from PIL import Image
 from tqdm import tqdm
 
 
 class BronchoOrganizer(abc.ABC):
-    def __init__(self, origin_root, new_root, n_trajectories=75, clean=True, test_pacient="P18", only_val=False):
+    def __init__(self, origin_root, new_root, n_trajectories=75, clean=True, test_pacient="P18", only_val=False,
+                 intra_patient=False, length=2):
         """[summary]
 
         Args:
@@ -27,6 +30,8 @@ class BronchoOrganizer(abc.ABC):
         self.split_length = 876
         self.test_pacient = test_pacient
         self.only_val = only_val
+        self.intra_patient = intra_patient
+        self.length = length
         if clean:
             self._clean()
 
@@ -50,97 +55,66 @@ class BronchoOrganizer(abc.ABC):
                 lobe_df = sample_df[sample_df["lobe"] == lobe].copy().reset_index()
                 lobe_df["isStatusChanged"] = lobe_df["base_filename"].shift(
                     1, fill_value=lobe_df["base_filename"].head(1)) != lobe_df["base_filename"]
-                change_indexes = np.insert(
-                    lobe_df.loc[lobe_df["isStatusChanged"], :].index.values, 0, 0)
-                self._splitting(lobe_df, csv, lobe, change_indexes)
+                change_indexes = lobe_df.loc[lobe_df["isStatusChanged"], :].index.values
+                if self.only_val:
+                    if self.intra_patient:
+                        self._splitting_only_val_intra_patient(lobe_df, csv, lobe, change_indexes)
+                else:
+                    pass
 
-    def _splitting(self, level_lobe_df, csv, lobe, change_indexes):
-        # trajectories_indexes_relative = np.random.randint(0, self.split_length, size=(self.n_trajectories, len(change_indexes)))
+    def _splitting_only_val_intra_patient(self, level_lobe_df, csv, lobe, change_indexes):
         trajectories_indexes_relative = np.random.randint(0, self.split_length, size=self.n_trajectories)
-        for i, j in enumerate(trajectories_indexes_relative):
+        # trajectories_indexes_relative = np.random.randint(0, self.split_length, size=(self.n_trajectories, len(change_indexes)))
+        # index_to_0 = np.random.randint(0, 2, size=(self.n_trajectories, len(change_indexes)))
+        # trajectories_indexes_relative = index_to_0*trajectories_indexes_relative
+        trj_train, trj_val = train_test_split(trajectories_indexes_relative, test_size=0.2, random_state=42, shuffle=True)
+        self._no_split_save(trj_val, change_indexes, level_lobe_df, csv, lobe, "test")
+        self._split_save(trj_val, change_indexes, level_lobe_df, csv, lobe, "val")
+        self._split_save(trj_train, change_indexes, level_lobe_df, csv, lobe, "train")
+        
+        # if not self.intra_patient:
+        #     if str(self.test_pacient) not in seq_level_lobe_df.loc[0, "patient"]:
+        #         destname = os.path.join(self.new_root, "train", extension_name)
+        #     else:
+        #         if (lobe == "ul" or lobe == "br") and not self.only_val:
+        #             destname = os.path.join(self.new_root, "test", extension_name)
+        #         else:
+        #             destname = os.path.join(self.new_root, "val", extension_name)
+        #     seq_level_lobe_df.to_csv(destname)
+        # else:
+        #     if random.random() > 0.2:
+        #         destname = os.path.join(self.new_root, "train", extension_name)
+        #     else:
+        #         destname = os.path.join(self.new_root, "val", extension_name)
+        #         destname = os.path.join(self.new_root, "test", extension_name)
+        #     seq_level_lobe_df.to_csv(destname)         
+
+    def _no_split_save(self, trajectory, change_indexes, level_lobe_df, csv, lobe, folder):
+        for i, j in enumerate(trajectory):
             trajectory_indexes = change_indexes + j
             seq_level_lobe_df = level_lobe_df.loc[
                 trajectory_indexes, self.columns_use,
             ].copy().reset_index()
-
-            extension_name = (
-                os.path.splitext(os.path.basename(csv))[0]
-                + "_"
-                + lobe
-                + "_"
-                + str(i)
-                + ".csv"
-            )
+            extension_name = (os.path.splitext(os.path.basename(csv))[0] + "_" + lobe + "_" + str(i) + ".csv")
             for column in self.columns_use[1:7]:
-                seq_level_lobe_df[column + "_dif"] = seq_level_lobe_df[column].diff(1).bfill()         
-            if str(self.test_pacient) not in seq_level_lobe_df.loc[0, "patient"]:
-                destname = os.path.join(self.new_root, "train", extension_name)
-            else:
-                if (lobe == "ul" or lobe == "br") and not self.only_val:
-                    destname = os.path.join(self.new_root, "test", extension_name)
-                else:
-                    destname = os.path.join(self.new_root, "val", extension_name)
+                seq_level_lobe_df[column + "_dif"] = seq_level_lobe_df[column].diff(1).bfill()
+            destname = os.path.join(self.new_root, folder, extension_name)
             seq_level_lobe_df.to_csv(destname)
+
+    def _split_save(self, trajectory, change_indexes, level_lobe_df, csv, lobe, folder):
+        for i, j in enumerate(trajectory):
+            trajectory_indexes = change_indexes + j
+            for h, index in enumerate(range(self.length, len(trajectory_indexes), self.length - 1)):
+                seq_level_lobe_df = level_lobe_df.loc[
+                    trajectory_indexes[(index - self.length): index], self.columns_use,
+                ].copy().reset_index()
+                extension_name = (os.path.splitext(os.path.basename(csv))[0] + "_" + lobe + "_" + str(i) + "_" + str(h) + ".csv")
+                for column in self.columns_use[1:7]:
+                    seq_level_lobe_df[column + "_dif"] = seq_level_lobe_df[column].diff(1).bfill()
+                destname = os.path.join(self.new_root, folder, extension_name)
+                seq_level_lobe_df.to_csv(destname)
 
     def _clean(self):
         shutil.rmtree(os.path.join(self.new_root, "train"))
         shutil.rmtree(os.path.join(self.new_root, "test"))
         shutil.rmtree(os.path.join(self.new_root, "val"))
-
-    def compute_statistics(self):
-        self.compute_label_statistics()
-        # self.image_statistis()
-
-    def compute_label_statistics(self):
-        csvfiles = glob.glob(os.path.join(self.new_root, "train", "*.csv"))
-        scaler = StandardScaler()
-        for csv in csvfiles:
-            sample_df = pd.read_csv(csv)
-            sample_df = sample_df.reindex(self.position_label_names + self.rotation_label_names, axis=1)
-            scaler.partial_fit(sample_df.to_numpy())
-        parent_dir = pathlib.Path(__file__).parent.absolute()
-        dump(scaler, open(os.path.join(parent_dir, "scaler.pkl"), "wb"))
-
-    def image_statistis(self):
-        n_images = 0
-        for folder in os.listdir(self.origin_root):
-            if str(self.test_pacient) not in folder:
-                folderpath = os.path.join(self.origin_root, folder)
-                if os.path.isdir(folderpath):
-                    for subfolder in os.listdir(folderpath):
-                        subfolder_path = os.path.join(folderpath, subfolder)
-                        if os.path.isdir(subfolder_path):
-                            n_images += len(os.listdir(subfolder_path))
-        print("N Images Training", n_images)
-        means = []
-        for folder in tqdm(os.listdir(self.origin_root), total=len(os.listdir(self.origin_root))):
-            if str(self.test_pacient) not in folder:
-                folderpath = os.path.join(self.origin_root, folder)
-                if os.path.isdir(folderpath):
-                    for subfolder in os.listdir(folderpath):
-                        subfolder_path = os.path.join(folderpath, subfolder)
-                        if os.path.isdir(subfolder_path):
-                            for image in os.listdir(subfolder_path):
-                                imagepath = os.path.join(subfolder_path, image)
-                                im = Image.open(imagepath)
-                                means.append((np.sum(im, axis=(0, 1))/(im.size[0]*im.size[1]))/n_images)
-        avg_mean = np.sum(np.stack(means), axis=0)
-        stds = []
-        for folder in tqdm(os.listdir(self.origin_root), total=len(os.listdir(self.origin_root))):
-            if str(self.test_pacient) not in folder:
-                folderpath = os.path.join(self.origin_root, folder)
-                if os.path.isdir(folderpath):
-                    for subfolder in os.listdir(folderpath):
-                        subfolder_path = os.path.join(folderpath, subfolder)
-                        if os.path.isdir(subfolder_path):
-                            for image in os.listdir(subfolder_path):
-                                imagepath = os.path.join(subfolder_path, image)
-                                im = (Image.open(imagepath) - avg_mean)**2
-                                stds.append((np.sum(im, axis=(0, 1))/(im.shape[0]*im.shape[1]))/n_images)
-        avg_std = np.sqrt(np.sum(np.stack(stds), axis=0))
-        statistics_file_path = os.path.join(
-            pathlib.Path(__file__).parent.absolute(),
-            "statistics.pkl"
-        )
-        stats = {"mean": avg_mean, "std": avg_std}
-        dump(stats, open(statistics_file_path, "wb"))

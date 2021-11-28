@@ -1,7 +1,15 @@
 import torch
 from torch import nn
 import pyquaternion as pyq
-from .metrics import DirectionError
+
+
+class EuclideanDistanceLoss(nn.Module):
+
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, x, labels):
+        return torch.sqrt(torch.sum((x - labels)**2))
 
 
 class CosLoss(nn.Module):
@@ -10,7 +18,7 @@ class CosLoss(nn.Module):
         super().__init__()
 
     def forward(self, x, labels):
-        return 1 - torch.mean(torch.cos(x-labels))
+        return torch.mean(1 - torch.cos(x-labels))
 
 
 class DirectionLoss(nn.Module):

@@ -1,5 +1,6 @@
 import torch
 from torchmetrics import Metric
+from .losses import QuaternionDistanceLoss
 
 
 # TODO: review metrics with Carles
@@ -96,3 +97,60 @@ class NeedleError(Metric):
         return torch.sqrt(torch.sum((
             preds[:3] + distance*direction_vec(preds[3:]) -
             (targets[:3] + distance*direction_vec(targets[3:])))**2))
+
+
+class CosMetric(Metric):
+
+    def __init__(self, indiv=None):
+        super().__init__()
+        self.add_state("squared_sum", torch.tensor(0, dtype=torch.float32),
+                       dist_reduce_fx="sum")
+        self.add_state("count", torch.tensor(0), dist_reduce_fx="sum")
+        self.indiv = indiv
+
+    def update(self, preds, targets):
+        if self.indiv:
+            self.squared_sum += torch.mean(1 - torch.cos(preds[self.indiv] - targets[self.indiv]))
+        else:
+            self.squared_sum += torch.mean(1 - torch.cos(preds - targets))
+        self.count += 1
+
+    def compute(self):
+        return self.squared_sum/self.count
+
+
+class QuatMetric(Metric):
+    def __init__(self):
+        super().__init__()
+        self.add_state("squared_sum", torch.tensor(0, dtype=torch.float32),
+                       dist_reduce_fx="sum")
+        self.add_state("count", torch.tensor(0), dist_reduce_fx="sum")
+
+    def update(self, preds, targets):
+        self.squared_sum += torch.mean(
+            QuaternionDistanceLoss.quaternion_distance(
+                QuaternionDistanceLoss.euler2q(preds),
+                QuaternionDistanceLoss.euler2q(targets)
+            )
+        )
+        self.count += 1
+
+    def compute(self):
+        return self.squared_sum/self.count
+
+
+class MSE(Metric):
+    def __init__(self):
+        super().__init__()
+        self.add_state("squared_sum", torch.tensor(0, dtype=torch.float32),
+                       dist_reduce_fx="sum")
+        self.add_state("count", torch.tensor(0), dist_reduce_fx="sum")
+
+    def update(self, preds, targets):
+        self.squared_sum += torch.mean((preds-targets)**2)
+        self.count += 1
+
+    def compute(self):
+        return self.squared_sum/self.count
+
+
