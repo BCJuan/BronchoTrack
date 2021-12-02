@@ -21,7 +21,8 @@ def choose_model(model):
         "doubleearlytemporal": bronchonet.BronchoNetDoubleTemporalEarlyFusion(),
         "doublelatetemporal": bronchonet.BronchoNetDoubleTemporalLateFusion(),
         "doublelate": bronchonet.BronchoNetDoubleLateFusion(),
-        "offsetnet": offsetnet.OffsetNet()
+        "offsetnet": offsetnet.OffsetNet(),
+        "doublelate3d": bronchonet.BronchoNetDoubleLate3DFusion()
     }
     return switch.get(model, "Not an available model")
 

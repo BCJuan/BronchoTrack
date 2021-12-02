@@ -32,7 +32,7 @@ class DirectionLoss(nn.Module):
     @staticmethod
     def inverse_cos(preds, targets):
         return torch.acos(
-            torch.sum(
+            torch.nansum(
                 DirectionLoss.direction_vec(preds) *
                 DirectionLoss.direction_vec(targets), dim=-1))
 
@@ -46,7 +46,7 @@ class DirectionLoss(nn.Module):
 
 
 def _sum_of_squares(q):
-    return torch.sum(q*q, axis=-1)
+    return torch.nansum(q*q, axis=-1)
 
 
 def _q_conjugate(q):
@@ -68,6 +68,7 @@ def _q_inverse(q):
         A new Quaternion object representing the inverse of this object
     """
     ss = _sum_of_squares(q)
+    ss = torch.where(ss > 0, ss, torch.tensor(1).type_as(ss))
     return _q_conjugate(q) / torch.stack([ss, ss, ss, ss], dim=-1)
 
 
@@ -105,11 +106,12 @@ def _q_log(q):
     """
     v_norm = torch.linalg.norm(q[..., 1:])
     q_norm = _q_norm(q)
+    tolerance = 1e-17
     vec = q[..., 1:] / v_norm
     new_q = torch.zeros_like(q).type_as(q)
     new_q[..., 0] = torch.log(q_norm)
     angles = torch.acos(q[..., 0]/q_norm)
-    new_q[..., 1:] = torch.stack([angles, angles, angles], dim=-1)*vec
+    new_q[..., 1:] = torch.where(v_norm < tolerance, torch.zeros_like(q[..., 1:]), torch.stack([angles, angles, angles], dim=-1)*vec)
     return new_q
 
 
@@ -141,7 +143,9 @@ class QuaternionDistanceLoss(nn.Module):
 
     @staticmethod
     def quaternion_distance(q, p):
-        q_n, p_n = _q_normalize(q), _q_normalize(p)
+        # q_n, p_n = _q_normalize(q), _q_normalize(p)
+        q_n, p_n = q, p
         q_pred = _q_inverse(q_n)*p_n
-        q_pred = _q_log(q_pred)
-        return _q_norm(q_pred)
+        q_pred_log = _q_log(q_pred)
+        q_pred_norm = _q_norm(q_pred_log)
+        return q_pred_norm

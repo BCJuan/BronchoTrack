@@ -59,5 +59,5 @@ def build_callbacks(version_name, model):
     checkpoint_callback = checkpointing(version_name)
     return [checkpoint_callback,
             LearningRateMonitor(logging_interval='epoch'),
-            EarlyStopping(monitor="val_loss", patience=20)]
+            EarlyStopping(monitor="val_loss", patience=25, min_delta=0.005)]
             # BackboneFineTuning(20, True if "single" in model else False)]

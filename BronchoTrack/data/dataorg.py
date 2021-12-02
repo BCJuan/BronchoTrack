@@ -59,8 +59,19 @@ class BronchoOrganizer(abc.ABC):
                 if self.only_val:
                     if self.intra_patient:
                         self._splitting_only_val_intra_patient(lobe_df, csv, lobe, change_indexes)
+                    else:
+                        self._splitting_only_val(lobe_df, csv, lobe, change_indexes, lobe_df.loc[0, "patient"])
                 else:
                     pass
+
+    def _splitting_only_val(self, level_lobe_df, csv, lobe, change_indexes, patient):
+        trajectories_indexes_relative = np.random.randint(0, self.split_length, size=self.n_trajectories)
+        if str(self.test_pacient) in patient:
+            self._split_save(trajectories_indexes_relative, change_indexes, level_lobe_df, csv, lobe, "val")
+            self._no_split_save(trajectories_indexes_relative, change_indexes, level_lobe_df, csv, lobe, "test")
+        else:
+            self._split_save(trajectories_indexes_relative, change_indexes, level_lobe_df, csv, lobe, "train")
+
 
     def _splitting_only_val_intra_patient(self, level_lobe_df, csv, lobe, change_indexes):
         trajectories_indexes_relative = np.random.randint(0, self.split_length, size=self.n_trajectories)
@@ -115,6 +126,6 @@ class BronchoOrganizer(abc.ABC):
                 seq_level_lobe_df.to_csv(destname)
 
     def _clean(self):
-        shutil.rmtree(os.path.join(self.new_root, "train"))
-        shutil.rmtree(os.path.join(self.new_root, "test"))
-        shutil.rmtree(os.path.join(self.new_root, "val"))
+        shutil.rmtree(os.path.join(self.new_root, "train"), ignore_errors=True)
+        shutil.rmtree(os.path.join(self.new_root, "test"), ignore_errors=True)
+        shutil.rmtree(os.path.join(self.new_root, "val"), ignore_errors=True)
