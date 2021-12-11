@@ -120,7 +120,7 @@ class BronchoNetDoubleTemporalLateFusion(nn.Module):
             output = torch.cat([ot, ot1], dim=1)
             o = self.fusion(output)
             o = self.latebone(o)
-            o = self.linear1(o.view(o.shape[0], -1))
+            o = o.view(o.shape[0], -1)
             feature_outputs.append(o)
 
         feature_outputs = torch.stack(feature_outputs).permute(1, 0, 2)
@@ -278,7 +278,6 @@ class BronchoNet3DDoubleTemporal(nn.Module):
             output = torch.cat([ot, ot1], dim=1)
             feature_outputs.append(self.latebone(output))  
         output = self.latebone(self.backbone(self.globalpooling(output).squeeze(2)))
-        print(output.shape)
         return output
 
 
@@ -296,10 +295,6 @@ class BronchoNetDoubleLate3DFusion(nn.Module):
         )
 
         self.conv3dblocks = nn.ModuleList([
-            nn.Sequential(
-                nn.Conv3d(256, 256, (3, 3, 3), 1, (1, 1, 1)),
-                nn.BatchNorm3d(256),
-                nn.ReLU()),
             nn.Sequential(
                 nn.Conv3d(256, 256, (3, 3, 3), 1, (1, 1, 1)),
                 nn.BatchNorm3d(256),

@@ -12,6 +12,7 @@ def main(hparams):
     model = BronchoModel(pred_folder=hparams.pred_folder, lr=hparams.lr,
                          model=hparams.model, rot_loss=hparams.rot_loss, pos_loss=hparams.pos_loss)
     version_name = "_".join([hparams.ckpt_name, hparams.model])
+
     if hparams.restore:
         restore_check = os.path.join("./checkpoints", version_name, version_name + ".ckpt")
     else:
@@ -33,7 +34,7 @@ def main(hparams):
         if hparams.ckpt:
             model = model.load_from_checkpoint(hparams.ckpt)
         else:
-            model = model.load_from_checkpoint(os.path.join("./checkpoints", version_name, version_name + ".ckpt"))
+            model = model.load_from_checkpoint(checkpoint_path=os.path.join("checkpoints", version_name, version_name + ".ckpt"))
         model.pred_folder = hparams.pred_folder
         trainer.test(model, drData)
     else:
@@ -49,7 +50,7 @@ def parse():
     parser.add_argument("--ckpt-name", dest="ckpt_name", type=str, default="bronchonet")
     parser.add_argument("--batch-size", dest="batch_size", type=int,  default=16)
     parser.add_argument("--augment", dest="augment", action="store_true", default=False)
-    parser.add_argument("--restore", dest="restore", action="store_true", default=None)
+    parser.add_argument("--restore", dest="restore", action="store_true", default=False)
     return parser
 
 

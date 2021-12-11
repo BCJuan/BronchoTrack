@@ -10,7 +10,7 @@ def parse():
     parser.add_argument("--clean", dest="clean", action="store_true")
     parser.add_argument("--n-trajectories", dest="n_trajectories", type=int, default=75)
     parser.add_argument("--compute-statistics", dest="compute_statistics", action="store_true")
-    parser.add_argument("--test-pacient", dest="test_pacient", type=str, choices=["P18", "P25", "P21", "P30", "P20"], default="P18")
+    parser.add_argument("--test-patient", dest="test_pacient", type=str, choices=["P18", "P25", "P21", "P30", "P20"], default="P18")
     parser.add_argument("--only-val", dest="only_val", action="store_true", default=False)
     parser.add_argument("--intra-patient", dest="intra_patient", action="store_true", default=False)
     parser.add_argument("--length", dest="length", type=int, default=2)

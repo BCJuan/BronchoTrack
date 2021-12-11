@@ -104,6 +104,7 @@ celerybeat.pid
 # Environments
 .env
 .venv
+
 env/
 venv/
 ENV/
@@ -136,5 +137,5 @@ experiments/logs/
 experiments/images_paper/*.pdf
 preguntes.md
 images_paper/
-
+launch.json
 Untitled.ipynb
