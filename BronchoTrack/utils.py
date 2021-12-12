@@ -3,8 +3,11 @@ import numpy as np
 import torch
 from pytorch_lightning.callbacks import (
     BaseFinetuning, ModelCheckpoint, LearningRateMonitor,
-    EarlyStopping
+    EarlyStopping, ModelPruning
     )
+
+
+params_prune = [(model.model1, "weight"), (model.model2, "weight"), (model.model3, "weight"), (model.model4, "weight")]
 
 
 def checkpointing(name):
@@ -55,9 +58,23 @@ class BackboneFineTuning(BaseFinetuning):
             )
 
 
-def build_callbacks(version_name, model):
+def pruning_callbacks():
+    return [
+        ModelPruning(
+            pruning_fn="ln_structured`",
+            parameters_to_prune=params,
+            amount=qq,
+            use_global_unstructured=False,
+            pruning_norm=1
+        ) for params, qq in zip(params_prune, np.arange(0.2, 1.0, 0.2))]
+
+
+def build_callbacks(version_name, model, distill=None):
     checkpoint_callback = checkpointing(version_name)
-    return [checkpoint_callback,
+    callbacks =  [checkpoint_callback,
             LearningRateMonitor(logging_interval='epoch'),
             EarlyStopping(monitor="val_loss", patience=25, min_delta=0.005)]
             # BackboneFineTuning(20, True if "single" in model else False)]
+    if distill:
+        callbacks = callbacks + pruning_callbacks()
+    return callbacks
