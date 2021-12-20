@@ -4,15 +4,13 @@ from pytorch_lightning.trainer import Trainer, seed_everything
 from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.plugins import DDPPlugin
 from BronchoTrack.trainer import BronchoModel
-from BronchoTrack.trainer_distill import BronchoModelDistilled
 from BronchoTrack.data.datasets import BronchoDataModule
 from BronchoTrack.utils import build_callbacks
 import torch
 
 
 def main(hparams):
-    model_option = BronchoModelDistilled if hparams.distill else BronchoModel
-    model = model_option(pred_folder=hparams.pred_folder, lr=hparams.lr,
+    model = BronchoModel(pred_folder=hparams.pred_folder, lr=hparams.lr,
                          model=hparams.model, rot_loss=hparams.rot_loss, pos_loss=hparams.pos_loss)
     version_name = "_".join([hparams.ckpt_name, hparams.model])
 
@@ -25,10 +23,11 @@ def main(hparams):
                     accumulate_grad_batches=64,
                     deterministic=True,
                     log_every_n_steps=1,
-                    resume_from_checkpoint=restore_check
+                    resume_from_checkpoint=restore_check,
+                    min_epochs=75
                     )
     
-    trainer.callbacks = build_callbacks(version_name, hparams.model, hparams.distill)
+    trainer.callbacks = build_callbacks(version_name, model, hparams.prune)
     logger = None if hparams.predict else TensorBoardLogger("logs", name="BronchoModel", version=version_name)
     trainer.logger = logger
     drData = BronchoDataModule(hparams.root, hparams.image_root, hparams.batch_size, augment=hparams.augment)
@@ -54,7 +53,7 @@ def parse():
     parser.add_argument("--batch-size", dest="batch_size", type=int,  default=16)
     parser.add_argument("--augment", dest="augment", action="store_true", default=False)
     parser.add_argument("--restore", dest="restore", action="store_true", default=False)
-    parser.add_argument("--distill", dest="distill", type=str, choices=["sole", "teacher", "multi"], default=None)
+    parser.add_argument("--prune", dest="prune", type=float, default=None)
     return parser
 
 

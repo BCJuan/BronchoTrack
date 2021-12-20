@@ -5,15 +5,14 @@ from BronchoTrack.utils import fix_randseed
 
 def parse():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--root", dest="root", type=str, required=True)
-    parser.add_argument("--new-root", dest="new_root", type=str, required=True)
-    parser.add_argument("--clean", dest="clean", action="store_true")
-    parser.add_argument("--n-trajectories", dest="n_trajectories", type=int, default=75)
-    parser.add_argument("--compute-statistics", dest="compute_statistics", action="store_true")
-    parser.add_argument("--test-patient", dest="test_pacient", type=str, choices=["P18", "P25", "P21", "P30", "P20"], default="P18")
-    parser.add_argument("--only-val", dest="only_val", action="store_true", default=False)
-    parser.add_argument("--intra-patient", dest="intra_patient", action="store_true", default=False)
-    parser.add_argument("--length", dest="length", type=int, default=2)
+    parser.add_argument("--root", dest="root", type=str, required=True, help="root for all data, images and csv")
+    parser.add_argument("--new-root", dest="new_root", type=str, required=True, help="where to organize new csv with sequences")
+    parser.add_argument("--clean", dest="clean", action="store_true", help="to clean or not previously generated sequences")
+    parser.add_argument("--n-trajectories", dest="n_trajectories", type=int, default=75, help="number of trajectories selected per lobe and patient")
+    parser.add_argument("--test-patient", dest="test_pacient", type=str, choices=["P18", "P25", "P21", "P30", "P20"], default="P18", help="which patient to held out as validation")
+    parser.add_argument("--only-val", dest="only_val", action="store_true", default=False, help="if true, we test in the validation set")
+    parser.add_argument("--intra-patient", dest="intra_patient", action="store_true", default=False, help="if true, validation is performed with the same patients but different sequences")
+    parser.add_argument("--length", dest="length", type=int, default=2, help="length of each sample fed to model")
     return parser.parse_args()
 
 
@@ -30,7 +29,4 @@ if __name__ == "__main__":
         intra_patient=args.intra_patient,
         length=args.length
     )
-    if args.compute_statistics:
-        organizer.compute_statistics()
-    else:
-        organizer.create_csvs()
+    organizer.create_csvs()

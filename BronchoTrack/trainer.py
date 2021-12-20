@@ -78,6 +78,7 @@ class BronchoModel(pl.LightningModule):
         return {"loss": loss, "preds": z.detach(), "targets": torch.cat([py, ry], dim=-1)}
 
     def training_epoch_end(self, outputs):
+        print(sum([p.numel() for p in self.model.parameters()]))
         self.perror.reset(), self.derror.reset(), self.nerror.reset(), self.cos.reset()
         self.cosx.reset(), self.cosy.reset(), self.cosz.reset, self.mse.reset(), self.quat.reset()
         for output in outputs:

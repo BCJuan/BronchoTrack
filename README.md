@@ -8,9 +8,17 @@ Go to `experiments`. To prepare train, val and test splits, place the files (ima
 
 `python organize.py`
 
-`python organize.py --root /mnt/DADES/datasetcalibracio/ --new-root data/cleaned --clean --n-trajectories 15 --test-pacient P18 --only-val`
+For outer patient scheme:
+
+`python organize.py --root /mnt/DADES/datasetcalibracio/ --new-root data/cleaned --clean --n-trajectories 15 --test-pacient P18 --only-val --length 2 `
+
+For intra patient scheme:
 
 `python organize.py --root /mnt/DADES/datasetcalibracio/ --new-root data/cleaned --clean --n-trajectories 15 --only-val --intra-patient --length 2`
+
+For trajectories of 15 image (14 pairs):
+
+`python organize.py --root /mnt/DADES/datasetcalibracio/ --new-root data/cleaned --clean --n-trajectories 15 --only-val --intra-patient --length 15`
 
 ## Training
 
