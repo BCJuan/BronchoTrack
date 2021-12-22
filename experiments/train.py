@@ -11,7 +11,8 @@ import torch
 
 def main(hparams):
     model = BronchoModel(pred_folder=hparams.pred_folder, lr=hparams.lr,
-                         model=hparams.model, rot_loss=hparams.rot_loss, pos_loss=hparams.pos_loss)
+                         model=hparams.model, rot_loss=hparams.rot_loss, pos_loss=hparams.pos_loss,
+                         distill_teacher=hparams.distill_teacher)
     version_name = "_".join([hparams.ckpt_name, hparams.model])
 
     if hparams.restore:
@@ -55,6 +56,8 @@ def parse():
     parser.add_argument("--augment", dest="augment", action="store_true", default=False)
     parser.add_argument("--restore", dest="restore", action="store_true", default=False)
     parser.add_argument("--prune", dest="prune", type=float, default=None)
+    parser.add_argument("--distill-teacher", dest="distill_teacher", type=str, default=None, help="checkpoint path for the teacher")
+    parser.add_argument("--teacher-alpha", dest="teacher_alpha", type=float, default=0.2)
     return parser
 
 

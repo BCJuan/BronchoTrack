@@ -3,6 +3,20 @@ from torch import nn
 import pyquaternion as pyq
 
 
+class UpperBoundTeacherLoss(nn.Module):
+
+    def __init__(self, baseLoss, alpha):
+        super().__init__()
+        self.baseLoss = baseLoss
+        self.alpha = alpha
+    
+    def forward(self, x, labels, studentPrediction, studentLoss):
+        if studentLoss > self.baseLoss(x, labels):
+            return (1 - self.alpha)*studentLoss + \
+                 self.alpha*self.baseLoss(studentPrediction, x)
+        else:
+            return studentLoss
+
 class EuclideanDistanceLoss(nn.Module):
 
     def __init__(self):

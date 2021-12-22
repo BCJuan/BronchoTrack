@@ -12,7 +12,10 @@ from .metrics import (
     EuclideanDistance, NeedleError, DirectionError,
     CosMetric, QuatMetric, MSE
 )
-from .losses import CosLoss, DirectionLoss, QuaternionDistanceLoss, EuclideanDistanceLoss
+from .losses import (
+    CosLoss, DirectionLoss, QuaternionDistanceLoss, EuclideanDistanceLoss,
+    UpperBoundTeacherLoss
+)
 
 
 def choose_model(model):
@@ -47,9 +50,17 @@ def choose_pos_loss(loss):
 
 class BronchoModel(pl.LightningModule):
 
-    def __init__(self, pred_folder="./data/cleaned/preds", lr=1e-4, model="singletemporal", rot_loss="mse", pos_loss="mse"):
+    def __init__(self, pred_folder="./data/cleaned/preds", lr=1e-4, model="singletemporal", rot_loss="mse", pos_loss="mse",
+                 distill_teacher=None, teacher_alpha=0.2):
         super().__init__()
         self.model = choose_model(model)
+        self.distill_teacher = distill_teacher
+        if distill_teacher:
+            self.teacher = BronchoModel.load_from_checkpoint(distill_teacher)
+            self.teacher.eval()
+            self.teacher.freeze()
+            self.teacherloss = UpperBoundTeacherLoss(choose_pos_loss(pos_loss), teacher_alpha)
+            self.teacherloss_1 = UpperBoundTeacherLoss(choose_rot_loss(rot_loss), teacher_alpha)
         self.loss = choose_pos_loss(pos_loss)
         self.loss1 = choose_rot_loss(rot_loss)
         self.perror, self.derror, self.nerror = EuclideanDistance(), DirectionError(), NeedleError()
@@ -129,6 +140,10 @@ class BronchoModel(pl.LightningModule):
         z = self.model(x)
         loss_p = self.loss(z[:, :, :3], py)
         loss_r = self.loss1(z[:, :, 3:], ry)
+        if self.distill_teacher:
+            z_t = self.teacher.model(x)
+            loss_p = self.teacherloss(z_t[:, :, :3], py, z[:, :, :3], loss_p)
+            loss_r = self.teacherloss_1(z_t[:, :, 3:], ry, z[:, :, 3:], loss_r)
         loss = loss_p + loss_r
         return loss, loss_p, loss_r, z, py, ry
 
