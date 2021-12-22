@@ -1,4 +1,5 @@
 import random
+import logging
 import numpy as np
 import torch
 import torch.nn as nn
@@ -10,13 +11,13 @@ from pytorch_lightning.callbacks import (
 
 _MODULE_CONTAINERS = (LightningModule, nn.Sequential, nn.ModuleList, nn.ModuleDict)
 _MAX_EPOCHS = 75
-_MIN_EPOCHS = 1
+_MIN_EPOCHS = 5
+
 
 def create_amount(max):
     def amount(epoch):
-        print("Pruning rate", max/(_MAX_EPOCHS - _MIN_EPOCHS), " and epoch ", epoch)
-        if epoch < _MAX_EPOCHS and epoch > _MIN_EPOCHS:
-            return max/(_MAX_EPOCHS - _MIN_EPOCHS)
+        if epoch < _MAX_EPOCHS and epoch >= _MIN_EPOCHS:
+            return max/float(_MAX_EPOCHS - _MIN_EPOCHS)
         else:
             return 0.0
     return amount
@@ -85,10 +86,12 @@ def pruning_callbacks(model, value):
             amount=create_amount(value),
             use_global_unstructured=False,
             pruning_norm=1,
-            pruning_dim=1,
+            pruning_dim=0,
             parameter_names=['weight'],
             use_lottery_ticket_hypothesis=False,
-            prune_on_train_epoch_end=True
+            prune_on_train_epoch_end=True,
+            make_pruning_permanent=True,
+            verbose=1
         )]
 
 
@@ -99,5 +102,4 @@ def build_callbacks(version_name, model, prune=None):
             EarlyStopping(monitor="val_loss", patience=25, min_delta=0.005)]
     if prune:
         callbacks = callbacks + pruning_callbacks(model, prune)
-        print(callbacks[-1]._parameters_to_prune)
     return callbacks

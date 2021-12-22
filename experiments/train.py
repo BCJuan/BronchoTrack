@@ -38,6 +38,7 @@ def main(hparams):
         else:
             model = model.load_from_checkpoint(checkpoint_path=os.path.join("checkpoints", version_name, version_name + ".ckpt"))
         model.pred_folder = hparams.pred_folder
+        print(sum([p.nonzero().size(0) for p in model.model.parameters()]))
         trainer.test(model, drData)
     else:
         trainer.fit(model, drData)
