@@ -1,7 +1,7 @@
 import torch
 from torch import nn
 from torchvision import models
-from .modules import InvertedResidual
+from .modules import InvertedResidual, ConvLSTM
 
 
 def _build_backbone(net: nn.Module, depth: int) -> nn.Module:
@@ -128,6 +128,56 @@ class BronchoNetDoubleTemporalLateFusion(nn.Module):
         output, (hn, cn) = self.lstm(feature_outputs)
         # out == [b, t, 32]
         output = self.linear(output)
+        # we do not include (N, t,Hout​)=0
+        return output
+
+
+class BronchoNetDoubleTemporalConvLateFusion(nn.Module):
+
+    def __init__(self):
+        super().__init__()
+        self.backbone_t = _build_backbone(models.efficientnet_b0(pretrained=True), 9)
+        self.backbone_t1 = _build_backbone(models.efficientnet_b0(pretrained=True), 9)
+
+        self.fusion = nn.Sequential(
+            nn.Conv2d(2560, 256, kernel_size=3, padding=1),
+            nn.BatchNorm2d(256),
+            nn.SiLU(inplace=True)
+        )
+
+        self.latebone = nn.Sequential(
+            InvertedResidual(256, 128, 2)
+        )
+        # NOTE: i know it is 356 for depth 5 of backbone, but we could adapt
+        # automatically to any depth by making half forward and introudcing
+        # shape in the model
+        # self.lstm = nn.LSTM(input_size=256, hidden_size=128, num_layers=1, batch_first=True)
+        self.convlstm = ConvLSTM(input_dim=128, hidden_dim=[32],
+                 kernel_size=(3, 3),
+                 num_layers=1,
+                 batch_first=True,
+                 bias=True,
+                 return_all_layers=False)
+
+        self.linear = nn.Linear(512, 6)
+
+    def forward(self, x):
+        feature_outputs = []
+        # images == [b, T, C, H, W]
+        for t in range(1, x.shape[1]):
+            ot = self.backbone_t(x[:, t, :, :, :])
+            ot1 = self.backbone_t1(x[:, t - 1, :, :, :])
+            output = torch.cat([ot, ot1], dim=1)
+            o = self.fusion(output)
+            o = self.latebone(o)
+            feature_outputs.append(o)
+
+        feature_outputs = torch.stack(feature_outputs).permute(1, 0, 2, 3, 4)
+        # [b, t, 64]
+        hn, cn = self.convlstm(feature_outputs)
+        hn[0] = hn[0].view(hn[0].shape[0], hn[0].shape[1], -1)
+        # out == [b, t, 32]
+        output = self.linear(hn[0])
         # we do not include (N, t,Hout​)=0
         return output
 

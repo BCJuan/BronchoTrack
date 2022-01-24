@@ -119,12 +119,12 @@ def _q_log(q):
         The method computes the logarithm of general quaternions. See [Source](https://math.stackexchange.com/questions/2552/the-logarithm-of-quaternion/2554#2554) for more details.
     """
     v_norm = torch.linalg.norm(q[..., 1:])
+    tolerance = torch.tensor(1e-16, dtype=torch.float)
     q_norm = _q_norm(q)
-    tolerance = 1e-17
-    vec = q[..., 1:] / v_norm
+    vec = q[..., 1:] / (v_norm + tolerance)
     new_q = torch.zeros_like(q).type_as(q)
     new_q[..., 0] = torch.log(q_norm)
-    angles = torch.acos(q[..., 0]/q_norm)
+    angles = torch.acos(torch.clip(q[..., 0]/(q_norm + tolerance), -1, 1))
     new_q[..., 1:] = torch.where(v_norm < tolerance, torch.zeros_like(q[..., 1:]), torch.stack([angles, angles, angles], dim=-1)*vec)
     return new_q
 
@@ -135,12 +135,12 @@ class QuaternionDistanceLoss(nn.Module):
         super().__init__()
 
     def forward(self, x, labels):
-        return torch.mean(
+        return torch.nan_to_num(torch.mean(
             QuaternionDistanceLoss.quaternion_distance(
                 QuaternionDistanceLoss.euler2q(x),
                 QuaternionDistanceLoss.euler2q(labels)
             )
-        )
+        ))
 
     @staticmethod
     def euler2q(vec):
@@ -157,7 +157,7 @@ class QuaternionDistanceLoss(nn.Module):
 
     @staticmethod
     def quaternion_distance(q, p):
-        # q_n, p_n = _q_normalize(q), _q_normalize(p)
+        q_n, p_n = _q_normalize(q), _q_normalize(p)
         q_n, p_n = q, p
         q_pred = _q_inverse(q_n)*p_n
         q_pred_log = _q_log(q_pred)
