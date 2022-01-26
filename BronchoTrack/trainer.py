@@ -7,7 +7,7 @@ from torch import nn
 from torch import optim
 import pytorch_lightning as pl
 from tqdm import tqdm
-from .models import bronchonet, offsetnet
+from .models import bronchonet, offsetnet, deependovo
 from .metrics import (
     EuclideanDistance, NeedleError, DirectionError,
     CosMetric, QuatMetric, MSE
@@ -26,7 +26,8 @@ def choose_model(model):
         "doublelate": bronchonet.BronchoNetDoubleLateFusion(),
         "offsetnet": offsetnet.OffsetNet(),
         "doublelate3d": bronchonet.BronchoNetDoubleLate3DFusion(),
-        "doublelateconvtemporal": bronchonet.BronchoNetDoubleTemporalConvLateFusion()
+        "doublelateconvtemporal": bronchonet.BronchoNetDoubleTemporalConvLateFusion(),
+        "deependovo": deependovo.DeepEndovo()
     }
     return switch.get(model, "Not an available model")
 
