@@ -15,7 +15,7 @@ from tqdm import tqdm
 
 class BronchoOrganizer(abc.ABC):
     def __init__(self, origin_root, new_root, n_trajectories=75, clean=True, test_pacient="P18", only_val=False,
-                 intra_patient=False, length=2):
+                 intra_patient=False, length=2, rotate_patient=False, save_indexes=False):
         """[summary]
 
         Args:
@@ -32,6 +32,8 @@ class BronchoOrganizer(abc.ABC):
         self.only_val = only_val
         self.intra_patient = intra_patient
         self.length = length
+        self.rotate_patient = rotate_patient
+        self.save_indexes = save_indexes
         if clean:
             self._clean()
 
@@ -56,49 +58,38 @@ class BronchoOrganizer(abc.ABC):
                 lobe_df["isStatusChanged"] = lobe_df["base_filename"].shift(
                     1, fill_value=lobe_df["base_filename"].head(1)) != lobe_df["base_filename"]
                 change_indexes = lobe_df.loc[lobe_df["isStatusChanged"], :].index.values
-                if self.only_val:
-                    if self.intra_patient:
-                        self._splitting_only_val_intra_patient(lobe_df, csv, lobe, change_indexes)
-                    else:
-                        self._splitting_only_val(lobe_df, csv, lobe, change_indexes, lobe_df.loc[0, "patient"])
+
+                if self.intra_patient:
+                    self._splitting_intra_patient(lobe_df, csv, lobe, change_indexes)
                 else:
-                    pass
+                    self._splitting_only_val(lobe_df, csv, lobe, change_indexes, lobe_df.loc[0, "patient"])
 
     def _splitting_only_val(self, level_lobe_df, csv, lobe, change_indexes, patient):
-        trajectories_indexes_relative = np.random.randint(0, self.split_length, size=self.n_trajectories)
+        if self.rotate_patient:
+            trajectories_indexes_relative = np.load("indexes.npy")    
+        else:
+            trajectories_indexes_relative = np.random.randint(0, self.split_length, size=self.n_trajectories)
+        if self.save_indexes:
+            np.save("indexes.npy", trajectories_indexes_relative)
         if str(self.test_pacient) in patient:
             self._split_save(trajectories_indexes_relative, change_indexes, level_lobe_df, csv, lobe, "val")
             self._no_split_save(trajectories_indexes_relative, change_indexes, level_lobe_df, csv, lobe, "test")
         else:
             self._split_save(trajectories_indexes_relative, change_indexes, level_lobe_df, csv, lobe, "train")
 
-
-    def _splitting_only_val_intra_patient(self, level_lobe_df, csv, lobe, change_indexes):
+    def _splitting_intra_patient(self, level_lobe_df, csv, lobe, change_indexes):
         trajectories_indexes_relative = np.random.randint(0, self.split_length, size=self.n_trajectories)
         # trajectories_indexes_relative = np.random.randint(0, self.split_length, size=(self.n_trajectories, len(change_indexes)))
         # index_to_0 = np.random.randint(0, 2, size=(self.n_trajectories, len(change_indexes)))
         # trajectories_indexes_relative = index_to_0*trajectories_indexes_relative
         trj_train, trj_val = train_test_split(trajectories_indexes_relative, test_size=0.2, random_state=42, shuffle=True)
-        self._no_split_save(trj_val, change_indexes, level_lobe_df, csv, lobe, "test")
+        if self.only_val:
+            trj_test = trj_val
+        else:
+            trj_val, trj_test = train_test_split(trj_val, test_size=0.5, random_state=42, shuffle=True)
+        self._no_split_save(trj_test, change_indexes, level_lobe_df, csv, lobe, "test")
         self._split_save(trj_val, change_indexes, level_lobe_df, csv, lobe, "val")
-        self._split_save(trj_train, change_indexes, level_lobe_df, csv, lobe, "train")
-        
-        # if not self.intra_patient:
-        #     if str(self.test_pacient) not in seq_level_lobe_df.loc[0, "patient"]:
-        #         destname = os.path.join(self.new_root, "train", extension_name)
-        #     else:
-        #         if (lobe == "ul" or lobe == "br") and not self.only_val:
-        #             destname = os.path.join(self.new_root, "test", extension_name)
-        #         else:
-        #             destname = os.path.join(self.new_root, "val", extension_name)
-        #     seq_level_lobe_df.to_csv(destname)
-        # else:
-        #     if random.random() > 0.2:
-        #         destname = os.path.join(self.new_root, "train", extension_name)
-        #     else:
-        #         destname = os.path.join(self.new_root, "val", extension_name)
-        #         destname = os.path.join(self.new_root, "test", extension_name)
-        #     seq_level_lobe_df.to_csv(destname)         
+        self._split_save(trj_train, change_indexes, level_lobe_df, csv, lobe, "train")    
 
     def _no_split_save(self, trajectory, change_indexes, level_lobe_df, csv, lobe, folder):
         for i, j in enumerate(trajectory):

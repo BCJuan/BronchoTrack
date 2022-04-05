@@ -13,6 +13,8 @@ def parse():
     parser.add_argument("--only-val", dest="only_val", action="store_true", default=False, help="if true, we test in the validation set")
     parser.add_argument("--intra-patient", dest="intra_patient", action="store_true", default=False, help="if true, validation is performed with the same patients but different sequences")
     parser.add_argument("--length", dest="length", type=int, default=2, help="length of each sample fed to model")
+    parser.add_argument("--rotate-patient", dest="rotate_patient", action="store_true", default=False, help="If dataset has been already created then we rotate the test patient")
+    parser.add_argument("--save-indexes", dest="save_indexes", action="store_true", default=False, help="Stores indexes of trajectories to be able to rotate patients with the same trajectories")
     return parser.parse_args()
 
 
@@ -27,6 +29,9 @@ if __name__ == "__main__":
         test_pacient=args.test_pacient,
         only_val=args.only_val,
         intra_patient=args.intra_patient,
-        length=args.length
+        length=args.length,
+        rotate_patient=args.rotate_patient,
+        save_indexes=args.save_indexes
     )
     organizer.create_csvs()
+    
