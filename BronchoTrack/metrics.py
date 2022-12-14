@@ -4,17 +4,33 @@ from .losses import QuaternionDistanceLoss
 
 
 # TODO: review metrics with Carles
-def direction_vec(preds):
+def direction_vec(preds, axis=0):
     # batch, step, pose
     # preds[0]==Rx==theta1==roll, preds[1]==Ry==theta2==pitch, preds[2]==Rz==theta3
     # transform from vector (1, 0, 0)
-    return torch.tensor([
-        torch.cos(preds[1])*torch.cos(preds[2]),
-        torch.sin(preds[0])*torch.sin(preds[1])*torch.cos(preds[2]) +
-        torch.cos(preds[0])*torch.sin(preds[2]),
-        -torch.cos(preds[0])*torch.sin(preds[1])*torch.cos(preds[2]) +
-        torch.sin(preds[0])*torch.sin(preds[2])
-    ]).type_as(preds)
+    if axis==0:
+        result = torch.tensor([
+            torch.cos(preds[1])*torch.cos(preds[2]),
+            torch.sin(preds[0])*torch.sin(preds[1])*torch.cos(preds[2]) +
+            torch.cos(preds[0])*torch.sin(preds[2]),
+            -torch.cos(preds[0])*torch.sin(preds[1])*torch.cos(preds[2]) +
+            torch.sin(preds[0])*torch.sin(preds[2])
+        ]).type_as(preds)
+    elif axis==1:
+        result = torch.tensor([
+            -torch.cos(preds[1])*torch.sin(preds[2]),
+            -torch.sin(preds[0])*torch.sin(preds[1])*torch.sin(preds[2]) +
+            torch.cos(preds[0])*torch.cos(preds[2]),
+            torch.cos(preds[0])*torch.sin(preds[1])*torch.sin(preds[2]) +
+            torch.sin(preds[0])*torch.cos(preds[2])
+        ]).type_as(preds)
+    elif axis==2:
+        result = torch.tensor([
+            torch.sin(preds[1]),
+            -torch.sin(preds[0])*torch.cos(preds[1]),
+            torch.cos(preds[0])*torch.cos(preds[1])
+        ]).type_as(preds)  
+    return result
 
 
 class EuclideanDistance(Metric):
@@ -66,9 +82,9 @@ class DirectionError(Metric):
         return self.squared_sum/self.count
 
     @staticmethod
-    def inverse_cos(preds, targets):
+    def inverse_cos(preds, targets, axis=0):
         return torch.acos(
-            torch.dot(direction_vec(preds), direction_vec(targets)))
+            torch.dot(direction_vec(preds, axis=axis), direction_vec(targets, axis=axis)))
 
 
 class NeedleError(Metric):
